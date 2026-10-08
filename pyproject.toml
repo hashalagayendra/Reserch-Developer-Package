@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "self-evolving-workflow"
+version = "0.1.0"
+description = "Autonomous AI Tool Discovery and Research Agent Workflow Library"
+readme = "README.md"
+authors = [
+    { name = "Hasala Gayendra", email = "hashalagayendra@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+    "requests>=2.32.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langchain-openrouter>=0.2.7",
+    "langgraph>=0.2.0",
+    "duckduckgo-search>=7.0.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research"]
+
