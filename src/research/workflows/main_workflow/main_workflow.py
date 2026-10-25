@@ -175,7 +175,7 @@ class MainWorkFlow:
 
         # 4. Build executable agent layers
         layers_data = result.get("layers", []) if isinstance(result, dict) else getattr(result, "layers", [])
-        self.executable_layers = build_layers_with_attaching_executable_agents(
+        self.executable_layers: ExecutableLayers = build_layers_with_attaching_executable_agents(
             layers=layers_data,
             temperature=self.temperature,
             api_key=self.api_key,

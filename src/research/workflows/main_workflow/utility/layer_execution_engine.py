@@ -53,7 +53,7 @@ async def run_single_agent(
     # Build user prompt combining agent's task with accumulated context from previous layers
     accumulated_context = format_accumulated_context_from_checkpoints(
         checkpoints=checkpoints,
-        current_layer=layer_number
+        layer_number=layer_number
     )
 
     if accumulated_context:

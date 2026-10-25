@@ -10,14 +10,14 @@ from typing import List, Optional, Any
 
 def format_accumulated_context_from_checkpoints(
     checkpoints: Optional[List[Any]],
-    current_layer: Optional[int] = None
+    layer_number: Optional[int] = None
 ) -> str:
     """
     Extracts and formats previous completed layer outputs from checkpoints into accumulated context text.
     
     Args:
         checkpoints: List of CheckpointDetails from execution layers.
-        current_layer: The currently running layer number (to only include previous layers).
+        layer_number: The currently running layer number (to only include previous layers).
         
     Returns:
         Formatted context string matching '[Layer X Outputs]\nAgent: ...\nTask: ...\nOutput: ...'
@@ -31,7 +31,7 @@ def format_accumulated_context_from_checkpoints(
         cp_layer = cp.get("layer_number") if isinstance(cp, dict) else getattr(cp, "layer_number", None)
 
         # Only include prior layers
-        if current_layer is not None and cp_layer is not None and cp_layer >= current_layer:
+        if layer_number is not None and cp_layer is not None and cp_layer >= layer_number:
             continue
 
         agents_list = cp.get("agents", []) if isinstance(cp, dict) else getattr(cp, "agents", [])
