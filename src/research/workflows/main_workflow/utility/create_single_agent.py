@@ -15,7 +15,8 @@ def create_single_agent(
     name: str = "SubAgent",
     tools: Optional[List[Any]] = None,
     temperature: Optional[float] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    response_format: Optional[Any] = None
 ) -> ExecutableSubAgent:
     """
     Creates an executable LangChain/LangGraph agent by sending model_name, system_prompt, and task.
@@ -29,6 +30,7 @@ def create_single_agent(
         tools (Optional[List[Any]], optional): Tools or APIToolDefinition items to bind to this agent. Defaults to None (empty list).
         temperature (Optional[float], optional): Model temperature. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
         api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
+        response_format (Optional[Any], optional): Structured response schema (Pydantic model or schema) to bind to this agent.
         
     Returns:
         ExecutableSubAgent: Pydantic model instance containing agent details, initialized LLM model instance, and compiled executable agent executor.
@@ -71,11 +73,18 @@ def create_single_agent(
         task=task.strip()
     )
 
-    # 4. Generate executable React agent with dynamic API tools and formatted prompt
+    if response_format is not None:
+        formatted_prompt += (
+            "\n\nCRITICAL REQUIREMENT: You MUST provide your final answer strictly adhering to "
+            "the required structured response schema."
+        )
+
+    # 4. Generate executable React agent with dynamic API tools, formatted prompt, and optional response_format
     agent_executor = create_react_agent(
         model=sub_agent_llm,
         tools=executable_agent_tools,
         prompt=formatted_prompt,
+        response_format=response_format,
         name=name
     )
 
@@ -86,5 +95,6 @@ def create_single_agent(
         model_name=model_name,
         llm=sub_agent_llm,
         tools=executable_agent_tools,
-        executor=agent_executor
+        executor=agent_executor,
+        response_format=response_format
     )

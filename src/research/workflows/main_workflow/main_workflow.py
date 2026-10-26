@@ -42,12 +42,14 @@ class MainWorkFlow:
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
         temperature: float = 0.5,
-        tool_discovery_workflow: Optional[ToolDiscoveryWorkflow] = None
+        tool_discovery_workflow: Optional[ToolDiscoveryWorkflow] = None,
+        response_schema: Optional[Any] = None
     ):
         self.api_key = api_key or settings.OPENROUTER_API_KEY
         self.model_name = model_name or settings.MAIN_WORKFLOW_MODEL
         self.temperature = temperature if temperature is not None else settings.MAIN_WORKFLOW_TEMPERATURE
         self.tool_discovery_workflow = tool_discovery_workflow
+        self.response_schema = response_schema
         
         # 1. Create tools from the db/data array
         # self.tools = [create_dynamic_api_tool(tool_dict) for tool_dict in ai_tools_data]
@@ -83,7 +85,8 @@ class MainWorkFlow:
             "- For each sub-agent, specify its name, system_prompt, task, model_name, and tools.\n"
             "- CRITICAL REQUIREMENT 1: You MUST strictly set the model_name field to 'deepseek/deepseek-v4-flash' for every sub-agent.\n"
             "- CRITICAL REQUIREMENT 2: In each sub-agent's 'tools' field, assign ONLY matching APIToolDefinition objects from discovered tools. If a sub-agent does not need any tools, set its 'tools' field to an empty list [].\n"
-            "- CRITICAL REQUIREMENT 3: Absolutely NEVER include 'tool_discovery_workflow' in any sub-agent's 'tools' list. It is an orchestrator-only tool."
+            "- CRITICAL REQUIREMENT 3: Absolutely NEVER include 'tool_discovery_workflow' in any sub-agent's 'tools' list. It is an orchestrator-only tool.\n"
+            "- CRITICAL REQUIREMENT 4: The very last sub-agent in the final layer MUST be designed as the synthesizer/reporter responsible for compiling all results from previous layers into the final, comprehensive response."
         )
 
         # 5. Initialize orchestrator memory store
@@ -105,21 +108,9 @@ class MainWorkFlow:
 
         # 7. Create agent & layers container
         self.executable_layers: Optional[ExecutableLayers] = None
-        # self.agent_executor = create_react_agent(self.llm, tools=self.tools)
+       
 
-    # async def test_tool_agent(self, prompt: str) -> dict:
-    #     """
-    #     Method to test the main workflow tool agent.
-        
-    #     Args:-
-    #         prompt (str): The prompt to test the tool agent with.
-    #     """
-    #     result = await self.agent_executor.ainvoke({"messages": [("user", prompt)]})
-        
-    #     return {
-    #         "response": result["messages"][-1].content if result and "messages" in result else "",
-    #         "tools_available": [t.name for t in self.tools]
-    #     }
+   
 
     async def main_orchestrator(self, state: Union[Dict[str, Any], str]) -> dict:
         """
@@ -179,7 +170,8 @@ class MainWorkFlow:
             layers=layers_data,
             temperature=self.temperature,
             api_key=self.api_key,
-            default_model_name=self.model_name
+            default_model_name=self.model_name,
+            response_schema=self.response_schema
         )
 
         # 5. Initialize checkpoint variable before layer execution
@@ -197,5 +189,6 @@ class MainWorkFlow:
 
         return {
             "task_division": result,
-            "execution_result": execution_result
+            "execution_result": execution_result,
+            "structured_output": execution_result.get("structured_output")
         }

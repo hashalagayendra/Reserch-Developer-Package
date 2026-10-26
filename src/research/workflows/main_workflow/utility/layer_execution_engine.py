@@ -39,16 +39,22 @@ async def run_single_agent(
         agent_task = agent.task
         agent_model = agent.model_name
         executor = agent.executor
+        response_format = agent.response_format
+        agent_llm = agent.llm
     elif isinstance(agent, dict):
         agent_name = agent.get("name", "SubAgent")
         agent_task = agent.get("task", "")
         agent_model = agent.get("model_name", fallback_model)
         executor = agent.get("executor")
+        response_format = agent.get("response_format")
+        agent_llm = agent.get("llm")
     else:
         agent_name = getattr(agent, "name", "SubAgent")
         agent_task = getattr(agent, "task", "")
         agent_model = getattr(agent, "model_name", fallback_model)
         executor = getattr(agent, "executor", None)
+        response_format = getattr(agent, "response_format", None)
+        agent_llm = getattr(agent, "llm", None)
 
     # Build user prompt combining agent's task with accumulated context from previous layers
     accumulated_context = format_accumulated_context_from_checkpoints(
@@ -79,9 +85,28 @@ async def run_single_agent(
     try:
         res = await executor.ainvoke({"messages": [("user", user_message)]})
         
-        # Extract last response content and tool call messages
+        # Extract structured response if present
+        structured_response = res.get("structured_response") if isinstance(res, dict) else None
         messages = res.get("messages", []) if isinstance(res, dict) else []
         final_content = messages[-1].content if messages else ""
+
+        # Fallback if response_format was expected but structured_response was not generated directly
+        if response_format is not None and structured_response is None:
+            try:
+                if agent_llm is not None:
+                    structured_llm = agent_llm.with_structured_output(response_format)
+                    structured_response = await structured_llm.ainvoke(
+                        messages if messages else [("user", user_message)]
+                    )
+            except Exception as parse_err:
+                WorkflowLogger.log_warning(f"Fallback structured parsing failed for agent '{agent_name}': {parse_err}")
+
+        # If final_content is empty (often happens when structured_response is used), populate from structured_response
+        if not final_content and structured_response is not None:
+            if hasattr(structured_response, "model_dump_json"):
+                final_content = structured_response.model_dump_json(indent=2)
+            else:
+                final_content = str(structured_response)
 
         # ---------------------------------------------------------------------
         # [LOGGING] Sub-Agent Execution Completed Successfully
@@ -120,6 +145,7 @@ async def run_single_agent(
             task=agent_task,
             status="success",
             response=str(final_content),
+            structured_response=structured_response.model_dump() if hasattr(structured_response, "model_dump") else structured_response,
             messages=messages
         )
     except Exception as e:
@@ -280,24 +306,31 @@ async def layer_execution_engine(
     # -------------------------------------------------------------------------
     WorkflowLogger.log_all_layers_complete(total_layers=len(execution_history))
 
-    # 3. Determine final response from the last layer's sub-agents
+    # 3. Determine final response and structured output from the last layer's sub-agents
     last_layer_agents = execution_history[-1].sub_agent_results if execution_history else []
+    final_agent = last_layer_agents[-1] if last_layer_agents else None
     final_response = (
-        last_layer_agents[-1].response
-        if last_layer_agents
+        final_agent.response
+        if final_agent
         else ""
+    )
+    final_structured_output = (
+        final_agent.structured_response
+        if final_agent
+        else None
     )
 
     # -------------------------------------------------------------------------
-    # [LOGGING] Final Synthesized Response
+    # [LOGGING] Final Synthesized Response & Structured Output
     # -------------------------------------------------------------------------
-    WorkflowLogger.log_final_response(final_response)
+    WorkflowLogger.log_final_response(final_response, structured_output=final_structured_output)
 
     # 4. Construct final execution summary
     summary = ExecutionSummary(
         execution_history=execution_history,
         accumulated_context=accumulated_context,
         final_response=final_response,
+        structured_output=final_structured_output,
         total_layers_executed=len(execution_history)
     )
 

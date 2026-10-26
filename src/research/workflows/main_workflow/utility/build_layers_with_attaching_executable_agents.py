@@ -17,11 +17,13 @@ def build_layers_with_attaching_executable_agents(
     tools: Optional[List[Any]] = None,
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
-    default_model_name: Optional[str] = None
+    default_model_name: Optional[str] = None,
+    response_schema: Optional[Any] = None
 ) -> ExecutableLayers:
     """
     Takes only the necessary layers data, iterates through each layer and sub-agent,
     sends the sub-agent data to create_single_agent to instantiate the executable agent,
+    binds the response_schema to the final sub-agent of the last layer,
     and returns the layer-by-layer ExecutableLayers Pydantic schema containing the executable agents.
     
     Args:
@@ -30,6 +32,7 @@ def build_layers_with_attaching_executable_agents(
         temperature (Optional[float], optional): Model temperature. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
         api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
         default_model_name (Optional[str], optional): Default LLM model name if not specified in sub-agent config.
+        response_schema (Optional[Any], optional): Structured response schema to bind to the last sub-agent of the last layer.
         
     Returns:
         ExecutableLayers: Layer-by-layer Pydantic model maintaining layer order and containing sub-agents with their executable agents.
@@ -49,9 +52,10 @@ def build_layers_with_attaching_executable_agents(
         raw_layers = []
 
     executable_layers_list: List[ExecutableLayer] = []
+    total_layers = len(raw_layers)
 
     # 2. Build executable agents layer by layer
-    for layer in raw_layers:
+    for layer_idx, layer in enumerate(raw_layers):
         if isinstance(layer, NonExecutableLayerConfig):
             layer_num = layer.layer_number
             sub_agents_list = layer.sub_agents
@@ -63,9 +67,10 @@ def build_layers_with_attaching_executable_agents(
             sub_agents_list = getattr(layer, "sub_agents", [])
 
         layer_executable_sub_agents: List[ExecutableSubAgent] = []
+        total_sub_agents = len(sub_agents_list)
 
         # 3. Iterate through each sub-agent in this layer and create its executable agent
-        for agent_data in sub_agents_list:
+        for agent_idx, agent_data in enumerate(sub_agents_list):
             if isinstance(agent_data, NonExecutableSubAgentConfig):
                 name = agent_data.name
                 system_prompt = agent_data.system_prompt
@@ -85,6 +90,10 @@ def build_layers_with_attaching_executable_agents(
                 model_name = getattr(agent_data, "model_name", fallback_model)
                 agent_tools = getattr(agent_data, "tools", [])
 
+            # Check if this agent is the very last sub-agent in the final layer
+            is_last_agent = (layer_idx == total_layers - 1) and (agent_idx == total_sub_agents - 1)
+            agent_response_format = response_schema if is_last_agent else None
+
             # Send data directly to create_single_agent utility function with only specifically assigned tools
             built_agent = create_single_agent(
                 model_name=model_name,
@@ -93,7 +102,8 @@ def build_layers_with_attaching_executable_agents(
                 name=name,
                 tools=agent_tools or [],
                 temperature=resolved_temperature,
-                api_key=resolved_api_key
+                api_key=resolved_api_key,
+                response_format=agent_response_format
             )
             layer_executable_sub_agents.append(built_agent)
 

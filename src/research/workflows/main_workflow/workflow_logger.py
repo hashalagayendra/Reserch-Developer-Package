@@ -203,6 +203,10 @@ class WorkflowLogger:
                 if sys_prompt:
                     agent_node.add(f"[bold cyan]System Prompt:[/bold cyan] [dim]{sys_prompt.strip()}[/dim]")
                 agent_node.add(f"[bold blue]Available Tools ({len(tool_names)}):[/bold blue] {tools_str}")
+                resp_fmt = getattr(agent, "response_format", None)
+                if resp_fmt:
+                    fmt_name = resp_fmt.__name__ if hasattr(resp_fmt, "__name__") else str(resp_fmt)
+                    agent_node.add(f"[bold magenta]Structured Response Schema:[/bold magenta] [cyan]{fmt_name}[/cyan]")
 
         console.print(
             Panel(
@@ -749,8 +753,8 @@ class WorkflowLogger:
     # =========================================================================
 
     @classmethod
-    def log_final_response(cls, final_response: str) -> None:
-        """Visual highlight panel for the final workflow response."""
+    def log_final_response(cls, final_response: str, structured_output: Optional[Any] = None) -> None:
+        """Visual highlight panel for the final workflow response and structured output."""
         console.print(
             Panel(
                 str(final_response).strip(),
@@ -760,6 +764,29 @@ class WorkflowLogger:
                 padding=(1, 2),
             )
         )
+        if structured_output is not None:
+            try:
+                dumped = structured_output.model_dump() if hasattr(structured_output, "model_dump") else structured_output
+                json_str = json.dumps(dumped, indent=2, ensure_ascii=False)
+                syntax = Syntax(json_str, "json", theme="monokai", line_numbers=False)
+                console.print(
+                    Panel(
+                        syntax,
+                        title="[bold green]📦 STRUCTURED OUTPUT (ResponseSchema)[/bold green]",
+                        border_style="green",
+                        box=box.ROUNDED,
+                        padding=(1, 2),
+                    )
+                )
+            except Exception:
+                console.print(
+                    Panel(
+                        str(structured_output),
+                        title="[bold green]📦 STRUCTURED OUTPUT (ResponseSchema)[/bold green]",
+                        border_style="green",
+                        box=box.ROUNDED
+                    )
+                )
         console.print()
 
     @classmethod
