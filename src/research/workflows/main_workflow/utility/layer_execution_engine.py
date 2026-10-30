@@ -1,6 +1,5 @@
 import asyncio
 from typing import List, Dict, Any, Union, Optional
-from research.config import settings
 from research.workflows.main_workflow.schemas import (
     ExecutableSubAgent,
     ExecutableLayer,
@@ -19,7 +18,8 @@ async def run_single_agent(
     agent: Union[ExecutableSubAgent, Dict[str, Any]],
     checkpoints: Optional[List[CheckpointDetails]] = None,
     layer_number: Optional[int] = None,
-    default_model_name: Optional[str] = None
+    default_model_name: Optional[str] = None,
+    error_correction_agent: Optional[Any] = None
 ) -> SubAgentExecutionResult:
     """
     Executes a single sub-agent using its compiled LangGraph executor.
@@ -29,11 +29,12 @@ async def run_single_agent(
         checkpoints (Optional[List[CheckpointDetails]], optional): The list of checkpoint details from previous layers.
         layer_number (Optional[int], optional): Current execution layer number.
         default_model_name (Optional[str], optional): Fallback model name if not present in agent.
+        error_correction_agent (Optional[Any], optional): Sub-agent for error diagnosis and recovery.
         
     Returns:
         SubAgentExecutionResult: The result of the sub-agent execution containing status, response, messages, and error if any.
     """
-    fallback_model = default_model_name or settings.MAIN_WORKFLOW_MODEL
+    fallback_model = default_model_name
     if isinstance(agent, ExecutableSubAgent):
         agent_name = agent.name
         agent_task = agent.task
@@ -183,7 +184,8 @@ async def layer_execution_engine(
     executable_layers: Optional[Union[ExecutableLayers, Dict[str, Any], List[Any]]] = None,
     initial_context: Optional[str] = None,
     checkpoints: Optional[List[CheckpointDetails]] = None,
-    default_model_name: Optional[str] = None
+    default_model_name: Optional[str] = None,
+    error_correction_agent: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Layer Execution Engine Node: Executes the agent layers sequentially using the ExecutableLayers Pydantic schema.
@@ -268,7 +270,8 @@ async def layer_execution_engine(
                     agent=agent,
                     checkpoints=checkpoints,
                     layer_number=layer_num,
-                    default_model_name=default_model_name
+                    default_model_name=default_model_name,
+                    error_correction_agent=error_correction_agent
                 )
                 for agent in sub_agents
             ]

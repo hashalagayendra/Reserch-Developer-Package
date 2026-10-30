@@ -14,6 +14,8 @@ class ResearchSettings(BaseSettings):
     MAIN_WORKFLOW_MODEL: str = "deepseek/deepseek-v4-flash"
     MAIN_WORKFLOW_TEMPERATURE: float = 0.0
     EMBEDDING_MODEL: str = "voyageai/voyage-4-lite"
+    ERROR_CORRECTION_MODEL: str = "deepseek/deepseek-v4-flash"
+    ERROR_CORRECTION_TEMPERATURE: float = 0.2
 
     class Config:
         env_file = ".env"

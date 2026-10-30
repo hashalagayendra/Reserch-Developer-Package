@@ -1,6 +1,5 @@
 from typing import List, Any, Optional
-from langchain_core.prompts import PromptTemplate
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_openrouter import ChatOpenRouter
 from research.config import settings
 from research.workflows.tool_descovery_workflow.tool_genarator import create_dynamic_api_tool
@@ -57,20 +56,13 @@ def create_single_agent(
     )
 
     # 3. Build structured prompt combining system prompt and assigned task
-    agent_prompt_template = PromptTemplate(
-        template=(
-            "You are an AI Sub-Agent with the following instructions and role:\n"
-            "{system_prompt}\n\n"
-            "================== ASSIGNED TASK ==================\n"
-            "{task}\n"
-            "===================================================\n\n"
-            "Execute the assigned task thoroughly using the available tools when needed."
-        ),
-        input_variables=["system_prompt", "task"]
-    )
-    formatted_prompt = agent_prompt_template.format(
-        system_prompt=system_prompt.strip(),
-        task=task.strip()
+    formatted_prompt = (
+        "You are an AI Sub-Agent with the following instructions and role:\n"
+        f"{system_prompt.strip()}\n\n"
+        "================== ASSIGNED TASK ==================\n"
+        f"{task.strip()}\n"
+        "===================================================\n\n"
+        "Execute the assigned task thoroughly using the available tools when needed."
     )
 
     if response_format is not None:
@@ -79,11 +71,11 @@ def create_single_agent(
             "the required structured response schema."
         )
 
-    # 4. Generate executable React agent with dynamic API tools, formatted prompt, and optional response_format
-    agent_executor = create_react_agent(
+    # 4. Generate executable Tool-Calling agent with dynamic API tools, system prompt, and optional response_format
+    agent_executor = create_agent(
         model=sub_agent_llm,
         tools=executable_agent_tools,
-        prompt=formatted_prompt,
+        system_prompt=formatted_prompt,
         response_format=response_format,
         name=name
     )

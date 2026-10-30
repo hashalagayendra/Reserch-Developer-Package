@@ -1,5 +1,6 @@
 from research.workflows.tool_descovery_workflow.tool_discovery import ToolDiscoveryWorkflow
 from research.workflows.main_workflow.main_workflow import MainWorkFlow
+from research.workflows.main_workflow.error_correction_sub_agent import ErrorCorrectionSubAgent
 from research.db_operations.main import ToolDBClient
 from research.config import settings
 from typing import Optional, Type, Any, Generic, TypeVar
@@ -23,12 +24,16 @@ class Research:
     toolDiscoveryModelTemperature: float
     mainWorkflowModel: str
     mainWorkflowModelTemperature: float
+    errorCorrectionModel: str
+    errorCorrectionModelTemperature: float
     projectApiKey: Optional[str]
     toolDbBaseUrl: str
     response_schema: Type[BaseModel]
+    error_correction_agent: Optional[ErrorCorrectionSubAgent]
 
     def __init__(self):
         self.response_schema = ResponseSchema[str]
+        self.error_correction_agent = None
 
     def configure(
         self,
@@ -39,6 +44,8 @@ class Research:
         toolDbBaseUrl: Optional[str] = None,
         mainWorkflowModel: Optional[str] = None,
         mainWorkflowModelTemperature: Optional[float] = None,
+        errorCorrectionModel: Optional[str] = None,
+        errorCorrectionModelTemperature: Optional[float] = None,
         response_schema: Optional[Type[BaseModel]] = None
     ):
         """
@@ -52,6 +59,8 @@ class Research:
             toolDbBaseUrl (str, optional): Base URL for the Tool DB API. Defaults to settings.TOOL_DB_BASE_URL.
             mainWorkflowModel (str, optional): Model for the main workflow. Defaults to settings.MAIN_WORKFLOW_MODEL.
             mainWorkflowModelTemperature (float, optional): Temperature for the main workflow. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
+            errorCorrectionModel (str, optional): Model for error correction. Defaults to settings.ERROR_CORRECTION_MODEL.
+            errorCorrectionModelTemperature (float, optional): Temperature for error correction. Defaults to settings.ERROR_CORRECTION_TEMPERATURE.
             response_schema (Type[BaseModel], optional): Pydantic model for structured output from the final agent. Wrapped inside ResponseSchema['response'] (defaults to str if None).
         """
         openRouterAPIKey = openRouterAPIKey or settings.OPENROUTER_API_KEY
@@ -61,6 +70,9 @@ class Research:
         mainWorkflowModel = mainWorkflowModel or settings.MAIN_WORKFLOW_MODEL
         if mainWorkflowModelTemperature is None:
             mainWorkflowModelTemperature = settings.MAIN_WORKFLOW_TEMPERATURE
+        errorCorrectionModel = errorCorrectionModel or settings.ERROR_CORRECTION_MODEL
+        if errorCorrectionModelTemperature is None:
+            errorCorrectionModelTemperature = settings.ERROR_CORRECTION_TEMPERATURE
 
         if not isinstance(openRouterAPIKey, str) or not openRouterAPIKey.strip():
             raise ValueError("openRouterAPIKey must be a valid, non-empty string.")
@@ -83,11 +95,22 @@ class Research:
         if not (0.0 <= mainWorkflowModelTemperature <= 2.0):       
             raise ValueError("mainWorkflowModelTemperature must be between 0.0 and 2.0.")
             
+        if not isinstance(errorCorrectionModel, str) or not errorCorrectionModel.strip():
+            raise ValueError("errorCorrectionModel must be a valid, non-empty string.")
+            
+        if not isinstance(errorCorrectionModelTemperature, (int, float)):
+            raise TypeError("errorCorrectionModelTemperature must be a numeric value.")
+            
+        if not (0.0 <= errorCorrectionModelTemperature <= 2.0):       
+            raise ValueError("errorCorrectionModelTemperature must be between 0.0 and 2.0.")
+
         self.openRouterAPIKey = openRouterAPIKey.strip()
         self.toolDiscoveryModel = toolDiscoveryModel.strip()
         self.toolDiscoveryModelTemperature = float(toolDiscoveryModelTemperature)
         self.mainWorkflowModel = mainWorkflowModel.strip()
         self.mainWorkflowModelTemperature = float(mainWorkflowModelTemperature)
+        self.errorCorrectionModel = errorCorrectionModel.strip()
+        self.errorCorrectionModelTemperature = float(errorCorrectionModelTemperature)
         
         if response_schema is not None:
             try:
@@ -104,6 +127,13 @@ class Research:
         # Initialize the DB Client
         db_client = ToolDBClient(base_url=self.toolDbBaseUrl, api_key=self.projectApiKey or "")
 
+        # Initialize Error Correction Agent
+        self.error_correction_agent = ErrorCorrectionSubAgent(
+            api_key=self.openRouterAPIKey,
+            model_name=self.errorCorrectionModel,
+            temperature=self.errorCorrectionModelTemperature
+        )
+
         self.tool_discovery_workflow = ToolDiscoveryWorkflow(
             openRouterAPIKey=self.openRouterAPIKey,
             toolDiscoveryModel=self.toolDiscoveryModel,
@@ -116,7 +146,8 @@ class Research:
             api_key=self.openRouterAPIKey,
             model_name=self.mainWorkflowModel,
             temperature=self.mainWorkflowModelTemperature,
-            response_schema=self.response_schema
+            response_schema=self.response_schema,
+            error_correction_agent=self.error_correction_agent
         )
 
     async def run(self, query: str):

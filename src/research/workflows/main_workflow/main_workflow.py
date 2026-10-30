@@ -19,7 +19,6 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.prebuilt import create_react_agent
 from langchain_openrouter import ChatOpenRouter
 from langchain_core.tools import StructuredTool
-from research.config import settings
 from research.workflows.tool_descovery_workflow.tool_genarator import create_dynamic_api_tool
 from research.workflows.tool_descovery_workflow.tool_discovery import ToolDiscoveryWorkflow, APIToolDefinition
 from research.workflows.main_workflow.utility import (
@@ -43,13 +42,15 @@ class MainWorkFlow:
         model_name: Optional[str] = None,
         temperature: float = 0.5,
         tool_discovery_workflow: Optional[ToolDiscoveryWorkflow] = None,
-        response_schema: Optional[Any] = None
+        response_schema: Optional[Any] = None,
+        error_correction_agent: Optional[Any] = None
     ):
-        self.api_key = api_key or settings.OPENROUTER_API_KEY
-        self.model_name = model_name or settings.MAIN_WORKFLOW_MODEL
-        self.temperature = temperature if temperature is not None else settings.MAIN_WORKFLOW_TEMPERATURE
+        self.api_key = api_key
+        self.model_name = model_name
+        self.temperature = temperature
         self.tool_discovery_workflow = tool_discovery_workflow
         self.response_schema = response_schema
+        self.error_correction_agent = error_correction_agent
         
         # 1. Create tools from the db/data array
         # self.tools = [create_dynamic_api_tool(tool_dict) for tool_dict in ai_tools_data]
@@ -181,7 +182,8 @@ class MainWorkFlow:
         execution_result = await layer_execution_engine(
             executable_layers=self.executable_layers,
             checkpoints=checkpoints,
-            default_model_name=self.model_name
+            default_model_name=self.model_name,
+            error_correction_agent=self.error_correction_agent
         )
 
         # Reset / nullify checkpoints after execution run
