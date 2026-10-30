@@ -71,7 +71,7 @@ def create_single_agent(
             "the required structured response schema."
         )
 
-    # 4. Generate executable Tool-Calling agent with dynamic API tools, system prompt, and optional response_format
+    # 4. Generate executable Tool-Calling agent with dynamic API tools, system prompt, and response_format
     agent_executor = create_agent(
         model=sub_agent_llm,
         tools=executable_agent_tools,

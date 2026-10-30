@@ -86,21 +86,22 @@ async def run_single_agent(
     try:
         res = await executor.ainvoke({"messages": [("user", user_message)]})
         
-        # Extract structured response if present
+        # Extract structured response directly from the agent execution result
         structured_response = res.get("structured_response") if isinstance(res, dict) else None
         messages = res.get("messages", []) if isinstance(res, dict) else []
         final_content = messages[-1].content if messages else ""
 
-        # Fallback if response_format was expected but structured_response was not generated directly
-        if response_format is not None and structured_response is None:
-            try:
-                if agent_llm is not None:
-                    structured_llm = agent_llm.with_structured_output(response_format)
-                    structured_response = await structured_llm.ainvoke(
-                        messages if messages else [("user", user_message)]
-                    )
-            except Exception as parse_err:
-                WorkflowLogger.log_warning(f"Fallback structured parsing failed for agent '{agent_name}': {parse_err}")
+        # Check if any tool message returned an error during the agent execution invoke
+        for msg in messages:
+            if getattr(msg, "status", None) == "error":
+                if error_correction_agent is not None:
+                    try:
+                        if hasattr(error_correction_agent, "start_fix"):
+                            fix_res = error_correction_agent.start_fix(str(getattr(msg, "content", "")))
+                            if asyncio.iscoroutine(fix_res):
+                                await fix_res
+                    except Exception as ec_err:
+                        WorkflowLogger.log_warning(f"Error correction agent failed on tool error message: {ec_err}")
 
         # If final_content is empty (often happens when structured_response is used), populate from structured_response
         if not final_content and structured_response is not None:
@@ -155,6 +156,20 @@ async def run_single_agent(
         # ---------------------------------------------------------------------
         WorkflowLogger.log_subagent_failed(agent_name=agent_name, error=e)
 
+        error_description = str(e)
+        if error_correction_agent is not None:
+            try:
+                if hasattr(error_correction_agent, "start_fix"):
+                    fix_res = error_correction_agent.start_fix(str(e))
+                    if asyncio.iscoroutine(fix_res):
+                        error_description = await fix_res
+                    else:
+                        error_description = str(fix_res)
+                elif hasattr(error_correction_agent, "describe_error"):
+                    error_description = await error_correction_agent.describe_error(str(e))
+            except Exception as ec_err:
+                WorkflowLogger.log_warning(f"Error correction agent failed on executor invoke error: {ec_err}")
+
         # Record failed sub-agent checkpoint
         if checkpoints is not None:
             agent_cp = AgentCheckpoint(
@@ -162,7 +177,7 @@ async def run_single_agent(
                 status=f"Error: {str(e)}",
                 task=agent_task,
                 tools=[],
-                output=f"Error executing task: {str(e)}"
+                output=f"Error executing task: {error_description}"
             )
             target_layer_cp = next((cp for cp in checkpoints if cp.layer_number == layer_number), None)
             if target_layer_cp is None:
@@ -175,7 +190,7 @@ async def run_single_agent(
             task=agent_task,
             status="error",
             error=str(e),
-            response=f"Error executing task: {str(e)}",
+            response=f"Error executing task: {error_description}",
             messages=[]
         )
 
@@ -197,6 +212,7 @@ async def layer_execution_engine(
         initial_context (Optional[str]): Optional initial context to pass to the first layer.
         checkpoints (Optional[List[CheckpointDetails]]): The list of checkpoint details for tracking layer execution.
         default_model_name (Optional[str]): Fallback model name for sub-agents if not specified.
+        error_correction_agent (Optional[Any]): Sub-agent for error diagnosis and recovery.
         
     Returns:
         Dict[str, Any]: Detailed execution summary conforming to ExecutionSummary containing layer-by-layer results, accumulated context, and the final response.
