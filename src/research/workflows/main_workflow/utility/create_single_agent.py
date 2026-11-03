@@ -15,7 +15,8 @@ def create_single_agent(
     tools: Optional[List[Any]] = None,
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
-    response_format: Optional[Any] = None
+    response_format: Optional[Any] = None,
+    provider: Optional[Any] = None
 ) -> ExecutableSubAgent:
     """
     Creates an executable LangChain/LangGraph agent by sending model_name, system_prompt, and task.
@@ -49,10 +50,18 @@ def create_single_agent(
             executable_agent_tools.append(t)
 
     # 2. Initialize dedicated LLM model instance
+    llm_kwargs = {}
+    if provider:
+        if isinstance(provider, str) and provider.strip().lower() != "auto":
+            llm_kwargs["openrouter_provider"] = {"order": [provider.strip()]}
+        elif isinstance(provider, dict):
+            llm_kwargs["openrouter_provider"] = provider
+
     sub_agent_llm = ChatOpenRouter(
         model=model_name,
         temperature=agent_temp,
-        api_key=agent_api_key
+        api_key=agent_api_key,
+        **llm_kwargs
     )
 
     # 3. Build structured prompt combining system prompt and assigned task

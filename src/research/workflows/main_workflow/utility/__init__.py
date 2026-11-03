@@ -6,6 +6,7 @@ from .transform_tool_discovery_workflow_as_tool import transform_tool_discovery_
 from .create_single_agent import create_single_agent
 from .build_layers_with_attaching_executable_agents import build_layers_with_attaching_executable_agents
 from .layer_execution_engine import run_single_agent, layer_execution_engine
+from .recovery_experiment_logger import RecoveryExperimentLogger
 
 __all__ = [
     "get_recent_models",
@@ -17,5 +18,6 @@ __all__ = [
     "build_layers_with_attaching_executable_agents",
     "run_single_agent",
     "layer_execution_engine",
+    "RecoveryExperimentLogger",
 ]
 

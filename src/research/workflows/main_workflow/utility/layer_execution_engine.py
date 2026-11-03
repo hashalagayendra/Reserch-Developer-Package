@@ -152,9 +152,9 @@ async def run_single_agent(
         # ---------------------------------------------------------------------
         WorkflowLogger.log_subagent_failed(agent_name=agent_name, error=e)
 
-
+        # Trigger 4-Node Error Correction Graph via get_error_details
         if error_correction_agent is not None:
-            await error_correction_agent.start_fix(
+            await error_correction_agent.get_error_details(
                 agent=agent,
                 checkpoints=checkpoints,
                 layer_number=layer_number,
