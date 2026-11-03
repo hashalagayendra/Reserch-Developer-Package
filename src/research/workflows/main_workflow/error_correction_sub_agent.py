@@ -12,6 +12,9 @@ from research.workflows.main_workflow.schemas import (
     ExecutableSubAgent,
     CheckpointDetails,
 )
+from research.workflows.main_workflow.utility.transform_tool_discovery_workflow_as_tool import (
+    transform_tool_discovery_workflow_as_tool,
+)
 
 
 class ErrorCorrectionSubAgent:
@@ -21,6 +24,7 @@ class ErrorCorrectionSubAgent:
 
     def __init__(
         self,
+        tool_discovery_workflow: Optional[Any] = None,
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
         temperature: float = 0.2
@@ -28,10 +32,15 @@ class ErrorCorrectionSubAgent:
         self.api_key = api_key
         self.model_name = model_name
         self.temperature = temperature
+        self.tool_discovery_workflow = tool_discovery_workflow
+
+        # Convert tool discovery workflow to tool
+        self.tool_discovery_tool = transform_tool_discovery_workflow_as_tool(
+            self.tool_discovery_workflow
+        )
 
         # Create agent
         self.error_correction_agent = self.create_error_correction_agent()
-       
 
     def create_error_correction_agent(
         self,
@@ -54,9 +63,15 @@ class ErrorCorrectionSubAgent:
             "identifying what caused the failure and how to resolve it."
         )
 
+        # Connect tool_discovery_tool if available and no specific tools provided
+        if tools is not None:
+            agent_tools = tools
+        else:
+            agent_tools = [self.tool_discovery_tool] if getattr(self, "tool_discovery_tool", None) else []
+
         return create_agent(
             model=llm,
-            tools=tools or [],
+            tools=agent_tools,
             system_prompt=system_prompt,
             name=name
         )

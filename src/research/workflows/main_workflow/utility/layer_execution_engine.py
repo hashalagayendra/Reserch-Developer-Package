@@ -162,7 +162,7 @@ async def run_single_agent(
                 error=e
             )
 
-        # Record failed sub-agent checkpoint
+        # Record failed sub-agent checkpoint (if all repair attempts were exhausted)
 
         if checkpoints is not None:
 

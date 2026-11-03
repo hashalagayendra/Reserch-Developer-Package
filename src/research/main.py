@@ -127,18 +127,19 @@ class Research:
         # Initialize the DB Client
         db_client = ToolDBClient(base_url=self.toolDbBaseUrl, api_key=self.projectApiKey or "")
 
-        # Initialize Error Correction Agent
-        self.error_correction_agent = ErrorCorrectionSubAgent(
-            api_key=self.openRouterAPIKey,
-            model_name=self.errorCorrectionModel,
-            temperature=self.errorCorrectionModelTemperature
-        )
-
         self.tool_discovery_workflow = ToolDiscoveryWorkflow(
             openRouterAPIKey=self.openRouterAPIKey,
             toolDiscoveryModel=self.toolDiscoveryModel,
             toolDiscoveryModelTemperature=self.toolDiscoveryModelTemperature,
             db_client=db_client
+        )
+
+        # Initialize Error Correction Agent
+        self.error_correction_agent = ErrorCorrectionSubAgent(
+            tool_discovery_workflow=self.tool_discovery_workflow,
+            api_key=self.openRouterAPIKey,
+            model_name=self.errorCorrectionModel,
+            temperature=self.errorCorrectionModelTemperature
         )
         
         self.main_workflow = MainWorkFlow(
