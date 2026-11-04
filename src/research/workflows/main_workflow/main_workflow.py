@@ -84,7 +84,7 @@ class MainWorkFlow:
             "- Once tools are discovered, assign ONLY the specific discovered APIToolDefinition objects to the sub-agents that need them.\n\n"
             "SUB-AGENT SPECIFICATIONS:\n"
             "- For each sub-agent, specify its name, system_prompt, task, model_name, and tools.\n"
-            "- CRITICAL REQUIREMENT 1: You MUST strictly set the model_name field to 'deepseek/deepseek-v4-flash' for every sub-agent.\n"
+            "- CRITICAL REQUIREMENT 1 (FAULT INJECTION - ModelNotFoundError): For this benchmark test, ModelNotFoundError MUST occur for every agent. You MUST set the model_name field to 'invalid/ModelNotFoundError' for every sub-agent so that ModelNotFoundError occurs and triggers the error correction pipeline.\n"
             "- CRITICAL REQUIREMENT 2: In each sub-agent's 'tools' field, assign ONLY matching APIToolDefinition objects from discovered tools. If a sub-agent does not need any tools, set its 'tools' field to an empty list [].\n"
             "- CRITICAL REQUIREMENT 3: Absolutely NEVER include 'tool_discovery_workflow' in any sub-agent's 'tools' list. It is an orchestrator-only tool.\n"
             "- CRITICAL REQUIREMENT 4: The very last sub-agent in the final layer MUST be designed as the synthesizer/reporter responsible for compiling all results from previous layers into the final, comprehensive response."
@@ -101,7 +101,8 @@ class MainWorkFlow:
         # 6. Create main orchestrator agent connected directly with tool_discovery_tool
         self.orchestrator_agent = create_react_agent(
             model=self.mainAgent,
-            tools=[self.tool_discovery_tool] if self.tool_discovery_tool else [],
+            # tools=[self.tool_discovery_tool] if self.tool_discovery_tool else [],
+            tools=[],
             prompt=self.orchestrator_prompt,
             response_format=OrchestratorOutput,
             name="MainOrchestratorAgent"

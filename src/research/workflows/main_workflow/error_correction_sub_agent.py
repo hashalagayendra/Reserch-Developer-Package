@@ -23,7 +23,6 @@ from typing import Optional, List, Any, Dict, Union, TypedDict
 from langchain.agents import create_agent
 from langchain_openrouter import ChatOpenRouter
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
 
 from research.workflows.main_workflow.schemas import (
     NonExecutableSubAgentConfig,
@@ -228,16 +227,22 @@ class ErrorCorrectionSubAgent:
             if isinstance(agent, dict):
                 agent_name = agent.get("name", "SubAgent")
                 agent_task = agent.get("task", "")
+                agent_system_prompt = agent.get("system_prompt", "")
+                agent_model = agent.get("model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.get("tools") or []
                 agent_response_format = agent.get("response_format")
             elif agent is not None:
                 agent_name = agent.name
                 agent_task = agent.task
+                agent_system_prompt = getattr(agent, "system_prompt", "")
+                agent_model = getattr(agent, "model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.tools or []
                 agent_response_format = agent.response_format
             else:
                 agent_name = "SubAgent"
                 agent_task = ""
+                agent_system_prompt = ""
+                agent_model = default_model_name or "deepseek/deepseek-v4-flash"
                 agent_tools = []
                 agent_response_format = None
 
@@ -270,22 +275,21 @@ class ErrorCorrectionSubAgent:
             ]
             generator_system_prompt = (
                 "You are an AI Architecture & Infrastructure Recovery Specialist Agent operating within a 4-level recovery hierarchy:\n"
-                "- Level 1: Infrastructure (Model fallback, endpoint and infrastructure provider selection, rate limits, execution parameters)\n"
+                "- Level 1: Infrastructure (Model fallback, endpoint and provider selection, rate limits, execution parameters)\n"
                 "- Level 2: Input Prompt & Context (Prompt instruction refinement, context trimming, ambiguity resolution)\n"
                 "- Level 3: Tool Calling (Dynamic tool discovery, argument correction, tool schema mapping)\n"
                 "- Level 4: Output & Validation (Output format enforcement, JSON schema alignment, Pydantic validation)\n\n"
-                "CRITICAL INSTRUCTION FOR THIS NODE:\n"
-                "You are operating strictly at Level 1 (Infrastructure). When generating the corrected sub-agent specification "
-                "(InfrastructureSubAgentConfig), you must ONLY change infrastructure-related configuration (such as model_name or the infrastructure provider). "
-                "Do NOT change or attempt to fix the other levels during this step: do NOT rewrite prompt instructions (Level 2), "
-                "do NOT modify tool configurations (Level 3), and do NOT modify output schemas (Level 4). "
-                "Preserve the original task and tools as-is, focusing exclusively on infrastructure recovery.\n\n"
+                "STRICT RESPONSIBILITY BOUNDARY (LEVEL 1 ONLY):\n"
+                "You are operating STRICTLY and EXCLUSIVELY at Level 1 (Infrastructure). Your ONLY job is to resolve infrastructure-level issues "
+                "by selecting a suitable replacement LLM model (model_name) and/or infrastructure provider (provider) in InfrastructureSubAgentConfig.\n"
+                "- STRICT PROHIBITION: You must NEVER modify or attempt to fix higher-level components: do NOT rewrite prompt instructions (Level 2), "
+                "do NOT add or modify tool configurations (Level 3), and do NOT alter output schemas (Level 4).\n"
+                "- Preserve the original task, system prompt, and tools as-is.\n\n"
                 "INFRASTRUCTURE PROVIDERS FOR ROUTING:\n"
                 f"When selecting or changing the backend infrastructure provider, set the 'provider' field to a valid provider string if needed "
                 f"(supported providers: {', '.join(fallback_providers)}, or None/'auto' for default routing).\n\n"
                 "AVAILABLE MODELS FOR FALLBACK / MODEL REPLACEMENT:\n"
-                "When changing the LLM model is required (e.g., due to model rate limits, context overflow, downtime, or capability issues), "
-                "select the most suitable model from this list for model_name:\n"
+                "Select the most suitable model from this list for model_name:\n"
                 "- 'deepseek/deepseek-v4-flash' (Default, ultra-fast, high cost-efficiency)\n"
                 "- 'deepseek/deepseek-chat' (General reasoning and strong instruction-following)\n"
                 "- 'openai/gpt-4o-mini' (Fast, robust instruction adherence, high throughput)\n"
@@ -296,18 +300,17 @@ class ErrorCorrectionSubAgent:
                 "- 'meta-llama/llama-3.3-70b-instruct' (Open-weights, reliable general performance)\n"
                 "- 'qwen/qwen-2.5-72b-instruct' (Strong analytical and multilingual capabilities)\n"
                 "- 'mistralai/mistral-large-2411' (High context adherence, complex logic)\n\n"
-                "Only change model_name from this list if changing the model is necessary to resolve the infrastructure error.\n\n"
-                "RESEARCH CONTEXT & EXPERIMENTAL NATURE:\n"
-                "This error-correction pipeline is an academic research benchmark designed to collect empirical recovery data. "
-                "It is completely acceptable and expected that some proposed repairs or configurations may fail—that is not a problem. "
-                "Do not hallucinate impossible configurations or over-engineer in an artificial attempt to guarantee success. "
-                "Formulate the most plausible infrastructure hypothesis; both successes and failures provide vital research insights."
+                "ACCEPTANCE OF FAILURE & EMPIRICAL BENCHMARKING:\n"
+                "This recovery pipeline is an academic empirical benchmark. If the root cause of the error is NOT an infrastructure failure "
+                "(e.g. if the failure is a prompt ambiguity, missing tool, or schema violation), this infrastructure tier CANNOT resolve it. "
+                "IT IS COMPLETELY EXPECTED AND ACCEPTABLE FOR THE REPAIRED AGENT TO FAIL. Never cross your boundary or try to compensate "
+                "for errors outside Level 1."
             )
 
             err = state.get("e", state.get("error"))
             error_code = str(err) if err is not None else "UnknownError"
             exp_id = state.get("experiment_id", "")
-            current_model = getattr(agent, "model_name", "deepseek/deepseek-v4-flash") if not isinstance(agent, dict) else agent.get("model_name", "deepseek/deepseek-v4-flash")
+            current_model = agent_model
 
             # 1. Agent 1: Generate Configuration (no logging for spec_agent)
             try:
@@ -316,10 +319,10 @@ class ErrorCorrectionSubAgent:
                     temperature=generator_temperature,
                     api_key=self.api_key
                 )
-                spec_agent = create_react_agent(
+                spec_agent = create_agent(
                     model=generator_llm,
                     tools=[],
-                    prompt=generator_system_prompt,
+                    system_prompt=generator_system_prompt,
                     response_format=InfrastructureSubAgentConfig,
                     name="InfraSpecGeneratorAgent"
                 )
@@ -355,11 +358,11 @@ class ErrorCorrectionSubAgent:
             else:
                 recovery_method = f"Model Fallback & Parameter Adaptation ({used_model})"
 
-            # 2. Agent 2: Create Sub-Agent via create_single_agent (No tools for infrastructure level)
+            # 2. Agent 2: Create Sub-Agent via create_single_agent (Infrastructure only: preserve original prompt, task, and tools)
             sub_agent_instance = create_single_agent(
                 model_name=used_model,
-                system_prompt=spec.system_prompt,
-                task=spec.task or agent_task,
+                system_prompt=agent_system_prompt or spec.system_prompt,
+                task=agent_task or spec.task,
                 name=spec.name or f"{agent_name}_{node_name}",
                 tools=[],
                 temperature=generator_temperature,
@@ -412,16 +415,22 @@ class ErrorCorrectionSubAgent:
             if isinstance(agent, dict):
                 agent_name = agent.get("name", "SubAgent")
                 agent_task = agent.get("task", "")
+                agent_system_prompt = agent.get("system_prompt", "")
+                agent_model = agent.get("model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.get("tools") or []
                 agent_response_format = agent.get("response_format")
             elif agent is not None:
                 agent_name = agent.name
                 agent_task = agent.task
+                agent_system_prompt = getattr(agent, "system_prompt", "")
+                agent_model = getattr(agent, "model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.tools or []
                 agent_response_format = agent.response_format
             else:
                 agent_name = "SubAgent"
                 agent_task = ""
+                agent_system_prompt = ""
+                agent_model = default_model_name or "deepseek/deepseek-v4-flash"
                 agent_tools = []
                 agent_response_format = None
 
@@ -449,18 +458,16 @@ class ErrorCorrectionSubAgent:
                 "- Level 2: Input Prompt & Context (Prompt instruction refinement, context trimming, ambiguity resolution)\n"
                 "- Level 3: Tool Calling (Dynamic tool discovery, argument correction, tool schema mapping)\n"
                 "- Level 4: Output & Validation (Output format enforcement, JSON schema alignment, Pydantic validation)\n\n"
-                "CRITICAL INSTRUCTION FOR THIS NODE:\n"
-                "You are operating strictly at Level 2 (Input Prompt & Context). When generating the corrected sub-agent specification "
-                "(NonExecutableSubAgentConfig), you must ONLY change prompt and context-related configurations (such as rewriting the system_prompt, "
-                "clarifying task instructions, disambiguating constraints, and pruning noisy context). "
-                "Do NOT change or attempt to fix the other levels during this step: do NOT change model_name (Level 1), "
-                "do NOT modify tool configurations or tool discovery (Level 3), and do NOT alter output validation schemas (Level 4). "
-                "Preserve the existing model_name and tools as-is, focusing exclusively on input prompt and context engineering to eliminate the failure.\n\n"
-                "RESEARCH CONTEXT & EXPERIMENTAL NATURE:\n"
-                "This error-correction pipeline is an academic research benchmark designed to collect empirical recovery data. "
-                "It is completely acceptable and expected that some proposed repairs or configurations may fail—that is not a problem. "
-                "Do not hallucinate impossible constraints or over-engineer in an artificial attempt to guarantee success. "
-                "Formulate the most plausible prompt-engineering hypothesis; both successes and failures provide vital research insights."
+                "STRICT RESPONSIBILITY BOUNDARY (LEVEL 2 ONLY):\n"
+                "You are operating STRICTLY and EXCLUSIVELY at Level 2 (Input Prompt & Context). Your ONLY job is to resolve failures caused by "
+                "prompt ambiguity, conflicting instructions, missing context, or malformed user prompts by refining system_prompt and task instructions.\n"
+                f"- STRICT PROHIBITION ON INFRASTRUCTURE: You are FORBIDDEN from changing model_name or provider. You MUST strictly retain the failing agent's original model_name ('{agent_model}').\n"
+                "- STRICT PROHIBITION ON TOOLS & OUTPUT: You are FORBIDDEN from adding, discovering, or modifying tools (Level 3) or output schemas (Level 4). Preserve existing tools and schemas as-is.\n\n"
+                "ACCEPTANCE OF FAILURE & EMPIRICAL BENCHMARKING:\n"
+                "This recovery pipeline is an academic empirical benchmark. If the root cause of the failure is an Infrastructure failure "
+                f"(such as ModelNotFoundError, invalid model ID, rate limits, or provider outages) or a Tool failure, Level 2 CANNOT fix it. "
+                "IT IS COMPLETELY EXPECTED AND ACCEPTABLE FOR THE REPAIRED AGENT TO FAIL. You must strictly stay within Level 2 and NOT change "
+                "the model or tools. Empirical failure at this tier when an infrastructure error occurs is the scientifically correct result."
             )
 
             err = state.get("e", state.get("error"))
@@ -474,20 +481,22 @@ class ErrorCorrectionSubAgent:
                     temperature=generator_temperature,
                     api_key=self.api_key
                 )
-                spec_agent = create_react_agent(
+                spec_agent = create_agent(
                     model=generator_llm,
                     tools=[],
-                    prompt=generator_system_prompt,
+                    system_prompt=generator_system_prompt,
                     response_format=NonExecutableSubAgentConfig,
                     name="PromptSpecGeneratorAgent"
                 )
                 generator_user_msg = (
                     f"Sub-agent execution failed.\n"
                     f"- Agent Name: {agent_name}\n"
+                    f"- Current Model: {agent_model}\n"
                     f"- Assigned Task: {agent_task}\n"
                     f"- Failure / Error Code: {error_code}\n"
                     f"- Error Details: {str(err)}\n\n"
-                    "Generate the corrected NonExecutableSubAgentConfig rewriting instructions to avoid this error."
+                    f"STRICT INSTRUCTION: Operating strictly at Level 2. Set model_name to '{agent_model}'. DO NOT change the model. "
+                    "Only rewrite instructions/context to resolve prompt-level issues. If the failure is not prompt-related, it is expected to fail."
                 )
                 spec_res = await spec_agent.ainvoke({"messages": [("user", generator_user_msg)]})
                 structured_spec = spec_res.get("structured_response")
@@ -502,9 +511,10 @@ class ErrorCorrectionSubAgent:
                 print(f"[{node_name}] Failed generating agent execution: {gen_err}")
                 return state
 
-            used_model = spec.model_name or generator_model
+            # Strictly enforce layer boundary: Level 2 CANNOT change model or tools
+            used_model = agent_model
 
-            # 2. Agent 2: Create Sub-Agent via create_single_agent (No tools for prompt & context level)
+            # 2. Agent 2: Create Sub-Agent via create_single_agent (Preserve original model and tools)
             sub_agent_instance = create_single_agent(
                 model_name=used_model,
                 system_prompt=spec.system_prompt,
@@ -560,16 +570,22 @@ class ErrorCorrectionSubAgent:
             if isinstance(agent, dict):
                 agent_name = agent.get("name", "SubAgent")
                 agent_task = agent.get("task", "")
+                agent_system_prompt = agent.get("system_prompt", "")
+                agent_model = agent.get("model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.get("tools") or []
                 agent_response_format = agent.get("response_format")
             elif agent is not None:
                 agent_name = agent.name
                 agent_task = agent.task
+                agent_system_prompt = getattr(agent, "system_prompt", "")
+                agent_model = getattr(agent, "model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.tools or []
                 agent_response_format = agent.response_format
             else:
                 agent_name = "SubAgent"
                 agent_task = ""
+                agent_system_prompt = ""
+                agent_model = default_model_name or "deepseek/deepseek-v4-flash"
                 agent_tools = []
                 agent_response_format = None
 
@@ -597,18 +613,17 @@ class ErrorCorrectionSubAgent:
                 "- Level 2: Input Prompt & Context (Prompt instruction refinement, context trimming, ambiguity resolution)\n"
                 "- Level 3: Tool Calling (Dynamic tool discovery, argument correction, tool schema mapping)\n"
                 "- Level 4: Output & Validation (Output format enforcement, JSON schema alignment, Pydantic validation)\n\n"
-                "CRITICAL INSTRUCTION FOR THIS NODE:\n"
-                "You are operating strictly at Level 3 (Tool Calling). When generating the corrected sub-agent specification "
-                "(NonExecutableSubAgentConfig), you must ONLY change tool-calling aspects (such as configuring appropriate tools in the tools list, "
-                "enabling dynamic tool discovery, or adding explicit tool usage instructions and parameter constraints). "
-                "Do NOT change or attempt to fix the other levels during this step: do NOT change model_name (Level 1), "
-                "do NOT rewrite the overall task formulation (Level 2), and do NOT modify output validation schemas (Level 4). "
-                "Focus exclusively on tool selection, parameter alignment, and accurate tool invocation schemas to resolve the error.\n\n"
-                "RESEARCH CONTEXT & EXPERIMENTAL NATURE:\n"
-                "This error-correction pipeline is an academic research benchmark designed to collect empirical recovery data. "
-                "It is completely acceptable and expected that some proposed repairs or configurations may fail—that is not a problem. "
-                "Do not hallucinate non-existent tools or over-engineer in an artificial attempt to guarantee success. "
-                "Formulate the most plausible tool-calling hypothesis; both successes and failures provide vital research insights."
+                "STRICT RESPONSIBILITY BOUNDARY (LEVEL 3 ONLY):\n"
+                "You are operating STRICTLY and EXCLUSIVELY at Level 3 (Tool Calling). Your ONLY job is to resolve failures caused by missing tools, "
+                "incorrect tool arguments, or malformed API calls by configuring the appropriate tools in NonExecutableSubAgentConfig.\n"
+                f"- STRICT PROHIBITION ON INFRASTRUCTURE: You are FORBIDDEN from changing model_name or provider. You MUST strictly retain the failing agent's original model_name ('{agent_model}').\n"
+                "- STRICT PROHIBITION ON PROMPT & OUTPUT: You are FORBIDDEN from reformulating the core task (Level 2) or changing output schemas (Level 4).\n"
+                "- TOOL DISCOVERY: If external API tools are needed, call 'tool_discovery_workflow' AT MOST ONCE. Populate 'tools' with the discovered APIToolDefinition objects. NEVER assign 'tool_discovery_workflow' itself in 'tools'.\n\n"
+                "ACCEPTANCE OF FAILURE & EMPIRICAL BENCHMARKING:\n"
+                "This recovery pipeline is an academic empirical benchmark. If the root cause of the failure is an Infrastructure failure "
+                f"(such as ModelNotFoundError, invalid model ID, rate limits, or provider outages) or a Prompt failure, Level 3 CANNOT fix it. "
+                "IT IS COMPLETELY EXPECTED AND ACCEPTABLE FOR THE REPAIRED AGENT TO FAIL. You must strictly stay within Level 3 and NOT change "
+                "the model. Empirical failure at this tier when an infrastructure error occurs is the scientifically correct result."
             )
 
             err = state.get("e", state.get("error"))
@@ -625,20 +640,22 @@ class ErrorCorrectionSubAgent:
                     temperature=generator_temperature,
                     api_key=self.api_key
                 )
-                spec_agent = create_react_agent(
+                spec_agent = create_agent(
                     model=generator_llm,
                     tools=discovery_tools,
-                    prompt=generator_system_prompt,
+                    system_prompt=generator_system_prompt,
                     response_format=NonExecutableSubAgentConfig,
                     name="ToolSpecGeneratorAgent"
                 )
                 generator_user_msg = (
                     f"Sub-agent execution failed during tool calling.\n"
                     f"- Agent Name: {agent_name}\n"
+                    f"- Current Model: {agent_model}\n"
                     f"- Assigned Task: {agent_task}\n"
                     f"- Failure / Error Code: {error_code}\n"
                     f"- Error Details: {str(err)}\n\n"
-                    "Generate the corrected NonExecutableSubAgentConfig ensuring accurate tool invocations."
+                    f"STRICT INSTRUCTION: Operating strictly at Level 3. Set model_name to '{agent_model}'. DO NOT change the model. "
+                    "Only configure appropriate tools in the tools list. If the failure is an infrastructure issue, it is expected to fail."
                 )
                 spec_res = await spec_agent.ainvoke({"messages": [("user", generator_user_msg)]})
                 structured_spec = spec_res.get("structured_response")
@@ -653,19 +670,16 @@ class ErrorCorrectionSubAgent:
                 print(f"[{node_name}] Failed generating agent execution: {gen_err}")
                 return state
 
-            used_model = spec.model_name or generator_model
+            # Strictly enforce layer boundary: Level 3 CANNOT change model or task prompt
+            used_model = agent_model
 
-            # 2. Agent 2: Create Sub-Agent with tool discovery workflow as tool
-            repaired_tools = list(discovery_tools)
-            if spec.tools:
-                for t in spec.tools:
-                    if t not in repaired_tools:
-                        repaired_tools.append(t)
+            # 2. Agent 2: Create Sub-Agent with concrete API tools (never pass tool_discovery_workflow to sub-agents)
+            repaired_tools = list(spec.tools) if spec.tools else list(agent_tools)
 
             sub_agent_instance = create_single_agent(
                 model_name=used_model,
-                system_prompt=spec.system_prompt,
-                task=spec.task or agent_task,
+                system_prompt=agent_system_prompt or spec.system_prompt,
+                task=agent_task or spec.task,
                 name=spec.name or f"{agent_name}_{node_name}",
                 tools=repaired_tools,
                 temperature=generator_temperature,
@@ -717,16 +731,22 @@ class ErrorCorrectionSubAgent:
             if isinstance(agent, dict):
                 agent_name = agent.get("name", "SubAgent")
                 agent_task = agent.get("task", "")
+                agent_system_prompt = agent.get("system_prompt", "")
+                agent_model = agent.get("model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.get("tools") or []
                 agent_response_format = agent.get("response_format")
             elif agent is not None:
                 agent_name = agent.name
                 agent_task = agent.task
+                agent_system_prompt = getattr(agent, "system_prompt", "")
+                agent_model = getattr(agent, "model_name", default_model_name or "deepseek/deepseek-v4-flash")
                 agent_tools = agent.tools or []
                 agent_response_format = agent.response_format
             else:
                 agent_name = "SubAgent"
                 agent_task = ""
+                agent_system_prompt = ""
+                agent_model = default_model_name or "deepseek/deepseek-v4-flash"
                 agent_tools = []
                 agent_response_format = None
 
@@ -754,18 +774,16 @@ class ErrorCorrectionSubAgent:
                 "- Level 2: Input Prompt & Context (Prompt instruction refinement, context trimming, ambiguity resolution)\n"
                 "- Level 3: Tool Calling (Dynamic tool discovery, argument correction, tool schema mapping)\n"
                 "- Level 4: Output & Validation (Output format enforcement, JSON schema alignment, Pydantic validation)\n\n"
-                "CRITICAL INSTRUCTION FOR THIS NODE:\n"
-                "You are operating strictly at Level 4 (Output & Validation). When generating the corrected sub-agent specification "
-                "(NonExecutableSubAgentConfig), you must ONLY change output formatting and validation adherence instructions "
-                "(such as instructing the agent on exact JSON keys, data types, schema validation rules, and eliminating extra markdown or conversational text). "
-                "Do NOT change or attempt to fix the other levels during this step: do NOT change model_name (Level 1), "
-                "do NOT change task scope (Level 2), and do NOT alter tool definitions (Level 3). "
-                "Focus exclusively on enforcing strict output schema compliance, parsing validity, and structured response conformance.\n\n"
-                "RESEARCH CONTEXT & EXPERIMENTAL NATURE:\n"
-                "This error-correction pipeline is an academic research benchmark designed to collect empirical recovery data. "
-                "It is completely acceptable and expected that some proposed repairs or configurations may fail—that is not a problem. "
-                "Do not hallucinate output schemas or over-engineer in an artificial attempt to guarantee success. "
-                "Formulate the most plausible output validation hypothesis; both successes and failures provide vital research insights."
+                "STRICT RESPONSIBILITY BOUNDARY (LEVEL 4 ONLY):\n"
+                "You are operating STRICTLY and EXCLUSIVELY at Level 4 (Output & Validation). Your ONLY job is to resolve failures caused by malformed output, "
+                "JSON decode errors, schema validation mismatches, or extra markdown by adding strict schema enforcement instructions to system_prompt.\n"
+                f"- STRICT PROHIBITION ON INFRASTRUCTURE: You are FORBIDDEN from changing model_name or provider. You MUST strictly retain the failing agent's original model_name ('{agent_model}').\n"
+                "- STRICT PROHIBITION ON TOOLS & TASK: You are FORBIDDEN from adding/discovering tools (Level 3) or changing task scope (Level 2). Preserve existing tools and task as-is.\n\n"
+                "ACCEPTANCE OF FAILURE & EMPIRICAL BENCHMARKING:\n"
+                "This recovery pipeline is an academic empirical benchmark. If the root cause of the failure is an Infrastructure failure "
+                f"(such as ModelNotFoundError, invalid model ID, rate limits, or provider outages), Prompt failure, or Tool failure, Level 4 CANNOT fix it. "
+                "IT IS COMPLETELY EXPECTED AND ACCEPTABLE FOR THE REPAIRED AGENT TO FAIL. You must strictly stay within Level 4 and NOT change "
+                "the model or tools. Empirical failure at this tier when an infrastructure error occurs is the scientifically correct result."
             )
 
             err = state.get("e", state.get("error"))
@@ -779,20 +797,22 @@ class ErrorCorrectionSubAgent:
                     temperature=generator_temperature,
                     api_key=self.api_key
                 )
-                spec_agent = create_react_agent(
+                spec_agent = create_agent(
                     model=generator_llm,
                     tools=[],
-                    prompt=generator_system_prompt,
+                    system_prompt=generator_system_prompt,
                     response_format=NonExecutableSubAgentConfig,
                     name="OutputSpecGeneratorAgent"
                 )
                 generator_user_msg = (
                     f"Sub-agent execution failed during output validation.\n"
                     f"- Agent Name: {agent_name}\n"
+                    f"- Current Model: {agent_model}\n"
                     f"- Assigned Task: {agent_task}\n"
                     f"- Failure / Error Code: {error_code}\n"
                     f"- Error Details: {str(err)}\n\n"
-                    "Generate the corrected NonExecutableSubAgentConfig enforcing strict schema compliance."
+                    f"STRICT INSTRUCTION: Operating strictly at Level 4. Set model_name to '{agent_model}'. DO NOT change the model. "
+                    "Only add output schema instructions. If the failure is an infrastructure issue, it is expected to fail."
                 )
                 spec_res = await spec_agent.ainvoke({"messages": [("user", generator_user_msg)]})
                 structured_spec = spec_res.get("structured_response")
@@ -807,13 +827,14 @@ class ErrorCorrectionSubAgent:
                 print(f"[{node_name}] Failed generating agent execution: {gen_err}")
                 return state
 
-            used_model = spec.model_name or generator_model
+            # Strictly enforce layer boundary: Level 4 CANNOT change model or tools
+            used_model = agent_model
 
-            # 2. Agent 2: Create Sub-Agent via create_single_agent (No tools for output validation level)
+            # 2. Agent 2: Create Sub-Agent via create_single_agent (Preserve original model, task, and tools)
             sub_agent_instance = create_single_agent(
                 model_name=used_model,
                 system_prompt=spec.system_prompt,
-                task=spec.task or agent_task,
+                task=agent_task or spec.task,
                 name=spec.name or f"{agent_name}_{node_name}",
                 tools=[],
                 temperature=generator_temperature,
