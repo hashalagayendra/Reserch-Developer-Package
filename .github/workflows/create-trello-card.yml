@@ -1,0 +1,65 @@
+name: Create Trello Card for New Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-card:
+    runs-on: ubuntu-latest
+    environment: trello
+    steps:
+      - name: Create Trello Card
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          TRELLO_LIST_ID: ${{ secrets.TRELLO_LIST_ID }}
+        run: |
+          echo "============================================================"
+          echo "🚀 [TRELLO INTEGRATION] Creating Card for New Issue"
+          echo "============================================================"
+          echo "📝 Issue #$ISSUE_NUMBER : $ISSUE_TITLE"
+          echo "👤 Opened By   : @$ISSUE_AUTHOR"
+          echo "🔗 Issue URL   : $ISSUE_URL"
+          echo "📋 Target List : $TRELLO_LIST_ID"
+          echo "------------------------------------------------------------"
+
+          PAYLOAD=$(jq -n \
+            --arg name "[#$ISSUE_NUMBER] $ISSUE_TITLE" \
+            --arg desc "Opened by: @$ISSUE_AUTHOR"$'\n'"Issue URL: $ISSUE_URL"$'\n\n'"---"$'\n'"$ISSUE_BODY" \
+            --arg idList "$TRELLO_LIST_ID" \
+            '{name: $name, desc: $desc, idList: $idList}')
+
+          echo "📡 Sending POST request to Trello API..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "https://api.trello.com/1/cards?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1)
+
+          echo "------------------------------------------------------------"
+          echo "📊 Trello API Response Status : $HTTP_STATUS"
+          echo "📄 Trello API Response Body   :"
+          echo "$HTTP_BODY" | jq . 2>/dev/null || echo "$HTTP_BODY"
+          echo "------------------------------------------------------------"
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            CARD_URL=$(echo "$HTTP_BODY" | jq -r '.shortUrl // .url // empty' 2>/dev/null)
+            if [ -n "$CARD_URL" ]; then
+              echo "🎉 SUCCESS! Trello card created: $CARD_URL"
+            else
+              echo "🎉 SUCCESS! Trello card created successfully."
+            fi
+          else
+            echo "❌ Error: Failed to create Trello card (HTTP Status: $HTTP_STATUS)"
+            exit 1
+          fi
+          echo "============================================================"
