@@ -41,6 +41,36 @@ researcher.configure(
 )
 ```
 
+## MCP URL supplied by your backend
+
+Pass only the separate MCP server's URL to the Research object. The package
+discovers and converts its tools internally before creating the orchestrator:
+
+```python
+from research import Research
+
+
+async def run_research(query, openrouter_key):
+    researcher = Research()
+    researcher.configure(
+        openRouterAPIKey=openrouter_key,
+        mcp_server_url="http://127.0.0.1:8001/mcp",
+    )
+    return await researcher.run(query)
+```
+
+The MCP adapter is a dependency of this package. `configure()` stores the URL;
+`run()` automatically awaits `initialize()` to load `researcher.mcp_tools`
+and build the main agent. To prepare the agent without running a query, call
+`await researcher.initialize()` after configuring it. Initialization is reused
+on subsequent runs; calling `configure()` resets it.
+
+`researcher.mcp_tools` is copied into
+`researcher.main_workflow.mcp_tools` and bound to the main orchestrator alongside
+its discovery tool. MCP tools execute remotely; the main agent places relevant
+returned facts into sub-agent tasks. Existing API tool discovery remains available.
+Omit `mcp_server_url` to preserve the original workflow. Tool names must be unique.
+
 ## Environment Variables
 
 You can configure defaults via a `.env` file:

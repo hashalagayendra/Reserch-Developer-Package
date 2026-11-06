@@ -5,6 +5,8 @@ from research.db_operations.main import ToolDBClient
 from research.config import settings
 from typing import Optional, Type, Any, Generic, TypeVar
 from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
+from research.mcp_tools import discover_mcp_tools
 
 T = TypeVar("T")
 
@@ -34,6 +36,9 @@ class Research:
     def __init__(self):
         self.response_schema = ResponseSchema[str]
         self.error_correction_agent = None
+        self.mcp_tools: list[BaseTool] = []
+        self.mcp_server_url = ""
+        self.main_workflow: Optional[MainWorkFlow] = None
 
     def configure(
         self,
@@ -46,7 +51,8 @@ class Research:
         mainWorkflowModelTemperature: Optional[float] = None,
         errorCorrectionModel: Optional[str] = None,
         errorCorrectionModelTemperature: Optional[float] = None,
-        response_schema: Optional[Type[BaseModel]] = None
+        response_schema: Optional[Type[BaseModel]] = None,
+        mcp_server_url: Optional[str] = None,
     ):
         """
         Configure the Research workflow agent.
@@ -62,6 +68,7 @@ class Research:
             errorCorrectionModel (str, optional): Model for error correction. Defaults to settings.ERROR_CORRECTION_MODEL.
             errorCorrectionModelTemperature (float, optional): Temperature for error correction. Defaults to settings.ERROR_CORRECTION_TEMPERATURE.
             response_schema (Type[BaseModel], optional): Pydantic model for structured output from the final agent. Wrapped inside ResponseSchema['response'] (defaults to str if None).
+            mcp_server_url: MCP HTTP endpoint. Tools are loaded inside this package before run().
         """
         openRouterAPIKey = openRouterAPIKey or settings.OPENROUTER_API_KEY
         toolDiscoveryModel = toolDiscoveryModel or settings.TOOL_DISCOVERY_MODEL
@@ -124,6 +131,10 @@ class Research:
         self.projectApiKey = resolved_project_key.strip() if resolved_project_key else None
         self.toolDbBaseUrl = (toolDbBaseUrl or settings.TOOL_DB_BASE_URL).rstrip('/')
 
+        self.mcp_server_url = (mcp_server_url or "").strip()
+        self.mcp_tools = []
+        self.main_workflow = None
+
         # Initialize the DB Client
         db_client = ToolDBClient(base_url=self.toolDbBaseUrl, api_key=self.projectApiKey or "")
 
@@ -141,14 +152,29 @@ class Research:
             db_client=db_client
         )
         
+        # HTTP discovery is asynchronous. With MCP enabled, build the agent
+        # after loading its tools in initialize(), called automatically by run().
+        if not self.mcp_server_url:
+            self._build_main_workflow()
+
+    def _build_main_workflow(self):
         self.main_workflow = MainWorkFlow(
             tool_discovery_workflow = self.tool_discovery_workflow,
             api_key=self.openRouterAPIKey,
             model_name=self.mainWorkflowModel,
             temperature=self.mainWorkflowModelTemperature,
             response_schema=self.response_schema,
-            error_correction_agent=self.error_correction_agent
+            error_correction_agent=self.error_correction_agent,
+            mcp_tools=self.mcp_tools,
         )
+
+    async def initialize(self):
+        """Discover MCP tools and bind the orchestrator, without running a query."""
+        if not hasattr(self, "tool_discovery_workflow"):
+            raise RuntimeError("Call configure() before initializing Research.")
+        if self.main_workflow is None:
+            self.mcp_tools = await discover_mcp_tools(self.mcp_server_url)
+            self._build_main_workflow()
 
     async def run(self, query: str):
         """ 
@@ -160,5 +186,6 @@ class Research:
         Returns:
             dict: The workflow execution result containing task division, execution history, and structured_output (if configured).
         """
+        await self.initialize()
         response = await self.main_workflow.main_orchestrator(query)
         return response
