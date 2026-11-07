@@ -110,7 +110,7 @@ async def run_single_agent(
         # Record sub-agent checkpoint
         if checkpoints is not None:
 
-            # collect executed tools  list 
+            # Collect tool names from the returned message history for checkpoints.
             tools_used: List[str] = []
             for msg in messages:
                 if hasattr(msg, "tool_calls") and msg.tool_calls:

@@ -13,6 +13,10 @@ class NonExecutableSubAgentConfig(BaseModel):
         default_factory=list,
         description="List of specific API tools (APIToolDefinition) assigned to this sub-agent to accomplish its task"
     )
+    mcp_tool_names: List[str] = Field(
+        default_factory=list,
+        description="Exact MCP tool names selected from extract_mcp_tools for this sub-agent"
+    )
 
 
 class NonExecutableLayerConfig(BaseModel):

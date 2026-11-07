@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Union, Optional
+from langchain_core.tools import BaseTool
 from research.config import settings
 from research.workflows.main_workflow.schemas import (
     NonExecutableSubAgentConfig,
@@ -18,7 +19,8 @@ def build_layers_with_attaching_executable_agents(
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
     default_model_name: Optional[str] = None,
-    response_schema: Optional[Any] = None
+    response_schema: Optional[Any] = None,
+    all_mcp_tools: Optional[List[BaseTool]] = None,
 ) -> ExecutableLayers:
     """
     Takes only the necessary layers data, iterates through each layer and sub-agent,
@@ -33,6 +35,7 @@ def build_layers_with_attaching_executable_agents(
         api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
         default_model_name (Optional[str], optional): Default LLM model name if not specified in sub-agent config.
         response_schema (Optional[Any], optional): Structured response schema to bind to the last sub-agent of the last layer.
+        all_mcp_tools: Available MCP tool registry; each agent receives only its named selections.
         
     Returns:
         ExecutableLayers: Layer-by-layer Pydantic model maintaining layer order and containing sub-agents with their executable agents.
@@ -40,6 +43,9 @@ def build_layers_with_attaching_executable_agents(
     resolved_api_key = api_key or settings.OPENROUTER_API_KEY
     resolved_temperature = temperature if temperature is not None else settings.MAIN_WORKFLOW_TEMPERATURE
     fallback_model = default_model_name or settings.MAIN_WORKFLOW_MODEL
+    all_mcp_tools = all_mcp_tools or []
+    if len({tool.name for tool in all_mcp_tools}) != len(all_mcp_tools):
+        raise ValueError("MCP tool names must be unique.")
 
     # 1. Extract raw layers list
     if isinstance(layers, OrchestratorOutput):
@@ -77,18 +83,33 @@ def build_layers_with_attaching_executable_agents(
                 task = agent_data.task
                 model_name = agent_data.model_name
                 agent_tools = agent_data.tools
+                assigned_mcp_tool_names = agent_data.mcp_tool_names
             elif isinstance(agent_data, dict):
                 name = agent_data.get("name", "SubAgent")
                 system_prompt = agent_data.get("system_prompt", "You are a specialized sub-agent.")
                 task = agent_data.get("task", "")
                 model_name = agent_data.get("model_name") or fallback_model
                 agent_tools = agent_data.get("tools", [])
+                assigned_mcp_tool_names = agent_data.get("mcp_tool_names", [])
             else:
                 name = getattr(agent_data, "name", "SubAgent")
                 system_prompt = getattr(agent_data, "system_prompt", "You are a specialized sub-agent.")
                 task = getattr(agent_data, "task", "")
                 model_name = getattr(agent_data, "model_name", fallback_model)
                 agent_tools = getattr(agent_data, "tools", [])
+                assigned_mcp_tool_names = getattr(agent_data, "mcp_tool_names", [])
+
+            assigned_mcp_tools = []
+            for tool_name in assigned_mcp_tool_names:
+                matched_tool = None
+                for mcp_tool in all_mcp_tools:
+                    if mcp_tool.name == tool_name:
+                        matched_tool = mcp_tool
+                        break
+
+                if matched_tool is None:
+                    raise ValueError(f"Unknown MCP tool {tool_name!r} assigned to sub-agent {name!r}.")
+                assigned_mcp_tools.append(matched_tool)
 
             # Check if this agent is the very last sub-agent in the final layer
             is_last_agent = (layer_idx == total_layers - 1) and (agent_idx == total_sub_agents - 1)
@@ -103,7 +124,8 @@ def build_layers_with_attaching_executable_agents(
                 tools=agent_tools or [],
                 temperature=resolved_temperature,
                 api_key=resolved_api_key,
-                response_format=agent_response_format
+                response_format=agent_response_format,
+                assigned_mcp_tools=assigned_mcp_tools,
             )
             layer_executable_sub_agents.append(built_agent)
 

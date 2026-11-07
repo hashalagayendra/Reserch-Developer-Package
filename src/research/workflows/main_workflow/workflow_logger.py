@@ -126,11 +126,13 @@ class WorkflowLogger:
                         agent_model = agent.get("model_name", "N/A")
                         agent_task = agent.get("task", "")
                         agent_tools = agent.get("tools", [])
+                        mcp_tool_names = agent.get("mcp_tool_names", [])
                     else:
                         agent_name = getattr(agent, "name", "SubAgent")
                         agent_model = getattr(agent, "model_name", "N/A")
                         agent_task = getattr(agent, "task", "")
                         agent_tools = getattr(agent, "tools", [])
+                        mcp_tool_names = getattr(agent, "mcp_tool_names", [])
 
                     tool_names = []
                     for t in agent_tools:
@@ -143,6 +145,8 @@ class WorkflowLogger:
                         else:
                             tool_names.append(str(t))
 
+                    # MCP assignments are names in a separate planning field.
+                    tool_names.extend(f"MCP: {name}" for name in mcp_tool_names)
                     tools_str = ", ".join(tool_names) if tool_names else "[dim]None[/dim]"
                     layer_label = f"Layer {layer_num}" if idx == 0 else ""
                     plan_table.add_row(layer_label, agent_name, agent_model, agent_task, tools_str)

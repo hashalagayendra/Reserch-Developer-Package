@@ -36,7 +36,7 @@ class Research:
     def __init__(self):
         self.response_schema = ResponseSchema[str]
         self.error_correction_agent = None
-        self.mcp_tools: list[BaseTool] = []
+        self.all_mcp_tools: list[BaseTool] = []
         self.mcp_server_url = ""
         self.main_workflow: Optional[MainWorkFlow] = None
 
@@ -132,7 +132,7 @@ class Research:
         self.toolDbBaseUrl = (toolDbBaseUrl or settings.TOOL_DB_BASE_URL).rstrip('/')
 
         self.mcp_server_url = (mcp_server_url or "").strip()
-        self.mcp_tools = []
+        self.all_mcp_tools = []
         self.main_workflow = None
 
         # Initialize the DB Client
@@ -165,7 +165,7 @@ class Research:
             temperature=self.mainWorkflowModelTemperature,
             response_schema=self.response_schema,
             error_correction_agent=self.error_correction_agent,
-            mcp_tools=self.mcp_tools,
+            all_mcp_tools=self.all_mcp_tools,
         )
 
     async def initialize(self):
@@ -173,7 +173,7 @@ class Research:
         if not hasattr(self, "tool_discovery_workflow"):
             raise RuntimeError("Call configure() before initializing Research.")
         if self.main_workflow is None:
-            self.mcp_tools = await discover_mcp_tools(self.mcp_server_url)
+            self.all_mcp_tools = await discover_mcp_tools(self.mcp_server_url)
             self._build_main_workflow()
 
     async def run(self, query: str):

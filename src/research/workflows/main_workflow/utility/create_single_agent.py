@@ -1,5 +1,6 @@
 from typing import List, Any, Optional
 from langchain.agents import create_agent
+from langchain_core.tools import BaseTool
 from langchain_openrouter import ChatOpenRouter
 from research.config import settings
 from research.workflows.tool_descovery_workflow.tool_genarator import create_dynamic_api_tool
@@ -15,7 +16,8 @@ def create_single_agent(
     tools: Optional[List[Any]] = None,
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
-    response_format: Optional[Any] = None
+    response_format: Optional[Any] = None,
+    assigned_mcp_tools: Optional[List[BaseTool]] = None,
 ) -> ExecutableSubAgent:
     """
     Creates an executable LangChain/LangGraph agent by sending model_name, system_prompt, and task.
@@ -30,6 +32,7 @@ def create_single_agent(
         temperature (Optional[float], optional): Model temperature. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
         api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
         response_format (Optional[Any], optional): Structured response schema (Pydantic model or schema) to bind to this agent.
+        assigned_mcp_tools: Resolved remote MCP tools assigned only to this sub-agent.
         
     Returns:
         ExecutableSubAgent: Pydantic model instance containing agent details, initialized LLM model instance, and compiled executable agent executor.
@@ -47,6 +50,12 @@ def create_single_agent(
             executable_agent_tools.append(create_dynamic_api_tool(t))
         else:
             executable_agent_tools.append(t)
+
+    # Combine converted workflow API tools and assigned MCP tools in one executor.
+    executable_agent_tools.extend(assigned_mcp_tools or [])
+    names = [tool.name for tool in executable_agent_tools]
+    if len(names) != len(set(names)):
+        raise ValueError(f"Duplicate tool names assigned to sub-agent {name!r}.")
 
     # 2. Initialize dedicated LLM model instance
     sub_agent_llm = ChatOpenRouter(
