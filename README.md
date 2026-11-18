@@ -76,6 +76,45 @@ combines these callable MCP tools with converted API tools in one agent executor
 Unknown MCP names and duplicate tool names are rejected before execution.
 Omit `mcp_server_url` to preserve the original workflow. Tool names must be unique.
 
+## Live MCP integration tests
+
+`tests/test_mcp_integration.py` starts the actual sibling `MCP_Server/server.py`
+on a temporary localhost port and stops it after the tests. It uses the server's
+virtual environment by default; set `MCP_SERVER_PYTHON` to override its Python
+executable. Install both projects' dependencies first.
+
+From `Reserch-Developer-Package`, run these PowerShell commands for the checks
+that require no model requests:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:MCP_INTEGRATION_TEST = "1"
+.venv/Scripts/python.exe -m unittest discover -s tests -p test_mcp_integration.py -v
+```
+
+These checks verify real HTTP discovery, a remote `greet` invocation, and
+`Research.configure()` / `initialize()` loading the tools into the main workflow.
+The real-model test is explicitly skipped in this mode.
+
+To also exercise `Research.run()` with a real OpenRouter model, configure a valid
+`OPENROUTER_API_KEY` in the environment or package `.env`, then run:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:MCP_LIVE_AGENT_TEST = "1"
+.venv/Scripts/python.exe -m unittest discover -s tests -p test_mcp_integration.py -v
+```
+
+This makes paid model requests. `MCP_TEST_MODEL` optionally overrides the configured
+main model. The test requires the actual workflow to record a successful
+`get_students` call/result pair and produce a final answer containing the highest
+student's name and marks (currently Amal, 82). A plausible final answer without a
+recorded tool result fails. Model/provider/network failures also fail the test;
+they are not silently skipped. No models or MCP tools are mocked.
+
+These are package-to-server integration checks. They do not verify browser UI,
+backend route configuration, or the complete frontend-to-backend flow.
+
 ## Environment Variables
 
 You can configure defaults via a `.env` file:
@@ -89,6 +128,19 @@ MAIN_WORKFLOW_MODEL=deepseek/deepseek-v4-flash
 MAIN_WORKFLOW_TEMPERATURE=0.0
 EMBEDDING_MODEL=voyageai/voyage-4-lite
 ```
+
+## Error classification
+
+Failed sub-agents are classified using `typesafe/jev-1.14` through OpenRouter's
+[Decisions API](https://openrouter.ai/docs/guides/community/jev).
+The model is hardcoded in `error_correction_sub_agent.py`.
+`ErrorClassifier` is a LangChain `RunnableLambda` called with `ainvoke(state)`;
+it wraps the Decisions API because Jev does not use the chat-completions API.
+The classifier uses the configured OpenRouter key.
+`start_fix()` returns a category and confidence; classification failures return
+`None` and preserve the original error.
+Categories are authentication, rate_limit, timeout, network, tool_execution,
+validation, model, and unknown. Classification does not retry or repair the task.
 
 ## Publishing to PyPI
 

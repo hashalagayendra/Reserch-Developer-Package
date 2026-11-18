@@ -1,6 +1,6 @@
 from research.workflows.tool_descovery_workflow.tool_discovery import ToolDiscoveryWorkflow
 from research.workflows.main_workflow.main_workflow import MainWorkFlow
-from research.workflows.main_workflow.error_correction_sub_agent import ErrorCorrectionSubAgent
+from research.workflows.main_workflow.utility.error_correction_agent.error_correction_sub_agent import ErrorCorrectionSubAgent
 from research.db_operations.main import ToolDBClient
 from research.config import settings
 from typing import Optional, Type, Any, Generic, TypeVar
