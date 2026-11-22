@@ -807,6 +807,19 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-typesafe"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "langchain-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6f/66/30ac39277a2b487d362ca83086f8c064cc025c5c48c25b4b172cf8e377cd/langchain_typesafe-0.0.2.tar.gz", hash = "sha256:76e0aad3048f3f4c3d79fe7051d728aa34b7e37ba7785ecdae9b8bf11fd4e5d0", size = 201244, upload-time = "2026-11-05T22:56:41.132Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/27/94d7c5c2b7d80a22e8fccdecc0b3313c11842a9b60431cf5971c489e145c/langchain_typesafe-0.0.2-py3-none-any.whl", hash = "sha256:6a1df08654a4651ac7bd6f8456e717e578d6e7c236028ad87710ea2600d4b0b1", size = 25157, upload-time = "2026-11-05T22:56:39.482Z" },
+]
+
+[[package]]
 name = "langgraph"
 version = "1.2.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1840,6 +1853,7 @@ dependencies = [
     { name = "langchain-mcp-adapters" },
     { name = "langchain-openai" },
     { name = "langchain-openrouter" },
+    { name = "langchain-typesafe" },
     { name = "langgraph" },
     { name = "mcp" },
     { name = "pydantic" },
@@ -1867,6 +1881,7 @@ requires-dist = [
     { name = "langchain-mcp-adapters", specifier = ">=0.3.1,<0.4" },
     { name = "langchain-openai", specifier = ">=0.3.0" },
     { name = "langchain-openrouter", specifier = ">=0.2.7" },
+    { name = "langchain-typesafe", specifier = ">=0.0.2" },
     { name = "langgraph", specifier = ">=0.2.0" },
     { name = "mcp", specifier = ">=1.26,<2" },
     { name = "pydantic", specifier = ">=2.10.0" },

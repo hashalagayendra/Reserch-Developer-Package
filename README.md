@@ -132,15 +132,17 @@ EMBEDDING_MODEL=voyageai/voyage-4-lite
 ## Error classification
 
 Failed sub-agents are classified using `typesafe/jev-1.14` through OpenRouter's
-[Decisions API](https://openrouter.ai/docs/guides/community/jev).
+[System One API](https://openrouter.ai/docs/guides/community/typesafe-sdk).
+`ErrorCorrectionSubAgent` initializes `langchain_typesafe.TypeSafeClassifier`
+with the configured OpenRouter key and `base_url="https://openrouter.ai/api"`.
+Its `classify_error()` method calls `ainvoke()` with state and a `Choice` question,
+then reads `response.choices["error_category"].probabilities` for all four scores.
 The model is hardcoded in `error_correction_sub_agent.py`.
-`ErrorClassifier` is a LangChain `RunnableLambda` called with `ainvoke(state)`;
-it wraps the Decisions API because Jev does not use the chat-completions API.
-The classifier uses the configured OpenRouter key.
-`start_fix()` returns a category and confidence; classification failures return
-`None` and preserve the original error.
-Categories are authentication, rate_limit, timeout, network, tool_execution,
-validation, model, and unknown. Classification does not retry or repair the task.
+The four categories are `model`, `infrastructure`, `tool`, and `structured_output`.
+`start_fix()` returns `probabilities` for every category, the `category` with the
+highest probability, and that probability as `confidence` (0 to 1). Ties use the
+first category in the returned probability mapping. Classification failures return
+`None` and preserve the original error. Classification does not retry or repair the task.
 
 ## Publishing to PyPI
 
