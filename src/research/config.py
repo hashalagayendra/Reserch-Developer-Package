@@ -7,7 +7,6 @@ class ResearchSettings(BaseSettings):
     Values can be overridden by environment variables or an optional .env file.
     """
     OPENROUTER_API_KEY: Optional[str] = ""
-    PROJECT_API_KEY: Optional[str] = "dummy_secret_key"
     TOOL_DB_BASE_URL: str = "http://127.0.0.1:8000/api/v1"
     TOOL_DISCOVERY_MODEL: str = "deepseek/deepseek-v4-flash"
     TOOL_DISCOVERY_TEMPERATURE: float = 0.8

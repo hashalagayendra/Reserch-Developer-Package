@@ -61,7 +61,7 @@ class Research:
             openRouterAPIKey (str, optional): The OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
             toolDiscoveryModel (str, optional): The model to use for tool discovery. Defaults to settings.TOOL_DISCOVERY_MODEL.
             toolDiscoveryModelTemperature (float, optional): Temperature for tool discovery. Defaults to settings.TOOL_DISCOVERY_TEMPERATURE.
-            projectApiKey (str, optional): Project API key for the Tool Database. Defaults to settings.PROJECT_API_KEY.
+            projectApiKey (str, optional): Backend-issued project API key for the Tool Database, supplied by the caller.
             toolDbBaseUrl (str, optional): Base URL for the Tool DB API. Defaults to settings.TOOL_DB_BASE_URL.
             mainWorkflowModel (str, optional): Model for the main workflow. Defaults to settings.MAIN_WORKFLOW_MODEL.
             mainWorkflowModelTemperature (float, optional): Temperature for the main workflow. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
@@ -127,8 +127,7 @@ class Research:
         else:
             self.response_schema = ResponseSchema[str]
         
-        resolved_project_key = projectApiKey or settings.PROJECT_API_KEY
-        self.projectApiKey = resolved_project_key.strip() if resolved_project_key else None
+        self.projectApiKey = projectApiKey.strip() if projectApiKey else None
         self.toolDbBaseUrl = (toolDbBaseUrl or settings.TOOL_DB_BASE_URL).rstrip('/')
 
         self.mcp_server_url = (mcp_server_url or "").strip()

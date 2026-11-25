@@ -117,10 +117,12 @@ backend route configuration, or the complete frontend-to-backend flow.
 
 ## Environment Variables
 
+Pass the project API key issued by the backend through `Research.configure(projectApiKey=...)`.
+The package does not read project API keys from environment variables or `.env` files.
+
 You can configure defaults via a `.env` file:
 ```ini
 OPENROUTER_API_KEY=your_key_here
-PROJECT_API_KEY=your_project_key
 TOOL_DB_BASE_URL=http://127.0.0.1:8000/api/v1
 TOOL_DISCOVERY_MODEL=deepseek/deepseek-v4-flash
 TOOL_DISCOVERY_TEMPERATURE=0.8
