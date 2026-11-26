@@ -1,5 +1,6 @@
 from typing import List, Any, Optional
 from langchain.agents import create_agent
+from research.execution_errors import RaiseToolErrorsMiddleware
 from langchain_core.tools import BaseTool
 from langchain_openrouter import ChatOpenRouter
 from research.config import settings
@@ -86,6 +87,7 @@ def create_single_agent(
         tools=executable_agent_tools,
         system_prompt=formatted_prompt,
         response_format=response_format,
+        middleware=[RaiseToolErrorsMiddleware()],
         name=name
     )
 

@@ -1,15 +1,14 @@
 """
 Error Correction Sub-Agent for Main Workflow.
 
-This agent handles error correction for sub-agents.
-Classifies failures separately from the correction chat model.
+Prints sub-agent failure details without repairing or rerunning the agent.
+Classification remains available only through an explicit classify_error call.
 """
 
 from typing import Optional, List, Any, Dict, Union
 from langchain.agents import create_agent
 from langchain_typesafe import Choice, TypeSafeClassifier
 from langchain_openrouter import ChatOpenRouter
-import logging
 from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 from research.workflows.main_workflow.schemas import (
@@ -117,74 +116,18 @@ class ErrorCorrectionSubAgent:
         layer_number: Optional[int] = None,
         default_model_name: Optional[str] = None,
         error: Optional[Any] = None
-    ) -> Any:
-        """
-        Log failure context and classify its primary cause.
-
-        Args:
-            agent (Union[ExecutableSubAgent, Dict[str, Any]]): The failed sub-agent instance or config dictionary.
-            checkpoints (Optional[List[CheckpointDetails]], optional): List of checkpoint details.
-            layer_number (Optional[int], optional): Current execution layer number.
-            default_model_name (Optional[str], optional): Fallback model name.
-            error (Optional[Any], optional): The exception or error that occurred.
-
-        Returns:
-            Any: Classification dictionary, or None if classification fails.
-        """
-        # Store input data in local variables
-        agent_data = agent
-        checkpoints_data = checkpoints
-        layer_number_data = layer_number
-        default_model_name_data = default_model_name
-        error_data = error
-
-        # Extract agent-specific details into local variables
-        if isinstance(agent, ExecutableSubAgent):
-            agent_name = agent.name
-            agent_task = agent.task
-            agent_system_prompt = getattr(agent, "system_prompt", "")
-            agent_model = agent.model_name
-            agent_tools = agent.tools
-            agent_executor = agent.executor
-            agent_response_format = agent.response_format
-            agent_llm = agent.llm
-        elif isinstance(agent, dict):
-            agent_name = agent.get("name", "SubAgent")
-            agent_task = agent.get("task", "")
-            agent_system_prompt = agent.get("system_prompt", "")
-            agent_model = agent.get("model_name", default_model_name)
-            agent_tools = agent.get("tools", [])
-            agent_executor = agent.get("executor")
-            agent_response_format = agent.get("response_format")
-            agent_llm = agent.get("llm")
-        else:
-            agent_name = getattr(agent, "name", "SubAgent")
-            agent_task = getattr(agent, "task", "")
-            agent_system_prompt = getattr(agent, "system_prompt", "")
-            agent_model = getattr(agent, "model_name", default_model_name)
-            agent_tools = getattr(agent, "tools", [])
-            agent_executor = getattr(agent, "executor", None)
-            agent_response_format = getattr(agent, "response_format", None)
-            agent_llm = getattr(agent, "llm", None)
+    ) -> None:
+        """Receive the original exception and print context; do not classify or retry."""
+        def field(name, default=None):
+            return agent.get(name, default) if isinstance(agent, dict) else getattr(agent, name, default)
 
         print("--- [Error Correction Agent] ---")
-        print(f"Error Correction Agent: {self.error_correction_agent}")
-        print(f"Agent: {agent_data}")
-        print(f"Agent Name: {agent_name}")
-        print(f"Agent Task: {agent_task}")
-        print(f"Agent Model: {agent_model}")
-        print(f"Layer Number: {layer_number_data}")
-        print(f"Default Model Name: {default_model_name_data}")
-        print(f"Error: {error_data}")
-        print(f"Checkpoints: {checkpoints_data}")
+        print(f"Agent Name: {field('name', 'SubAgent')}")
+        print(f"Agent Task: {field('task', '')}")
+        print(f"Agent Model: {field('model_name') or default_model_name}")
+        print(f"Layer Number: {layer_number}")
+        print(f"Error Type: {type(error).__name__}")
+        print(f"Error: {error}")
+        if getattr(error, "tool_name", None):
+            print(f"Failed Tool: {error.tool_name}")
         print("--------------------------------")
-        try:
-            classification = await self.classify_error({
-                "error": error_data, "agent_name": agent_name,
-                "task": agent_task, "model_name": agent_model,
-            })
-            return classification.model_dump()
-        except Exception as exc:
-            # Classification must never replace the original workflow failure.
-            logging.getLogger(__name__).warning("Error classification failed (%s)", type(exc).__name__)
-            return None

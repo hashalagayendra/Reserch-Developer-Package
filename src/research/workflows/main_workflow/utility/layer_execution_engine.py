@@ -1,4 +1,7 @@
 import asyncio
+import logging
+from pydantic import BaseModel
+from research.execution_errors import raise_tool_message_error
 from typing import List, Dict, Any, Union, Optional
 from research.workflows.main_workflow.schemas import (
     ExecutableSubAgent,
@@ -57,39 +60,50 @@ async def run_single_agent(
         response_format = getattr(agent, "response_format", None)
         agent_llm = getattr(agent, "llm", None)
 
-    # Build user prompt combining agent's task with accumulated context from previous layers
-    accumulated_context = format_accumulated_context_from_checkpoints(
-        checkpoints=checkpoints,
-        layer_number=layer_number
-    )
-
-    if accumulated_context:
-        user_message = (
-            f"Assigned Task: {agent_task}\n\n"
-            f"Context & Results from Previous Layer(s):\n{accumulated_context}\n\n"
-            "Please use the above context and your available tools to accomplish your task."
-        )
-    else:
-        user_message = f"Assigned Task: {agent_task}"
-
-    # -------------------------------------------------------------------------
-    # [LOGGING] Sub-Agent Execution Starting
-    # -------------------------------------------------------------------------
-    WorkflowLogger.log_subagent_start(
-        agent_name=agent_name,
-        agent_model=agent_model,
-        agent_task=agent_task,
-        layer_number=layer_number,
-        accumulated_context=accumulated_context
-    )
-
+    messages = []
     try:
+        # Build user prompt combining agent's task with accumulated context from previous layers
+        accumulated_context = format_accumulated_context_from_checkpoints(
+            checkpoints=checkpoints,
+            layer_number=layer_number
+        )
+
+        if accumulated_context:
+            user_message = (
+                f"Assigned Task: {agent_task}\n\n"
+                f"Context & Results from Previous Layer(s):\n{accumulated_context}\n\n"
+                "Please use the above context and your available tools to accomplish your task."
+            )
+        else:
+            user_message = f"Assigned Task: {agent_task}"
+
+        # -------------------------------------------------------------------------
+        # [LOGGING] Sub-Agent Execution Starting
+        # -------------------------------------------------------------------------
+        WorkflowLogger.log_subagent_start(
+            agent_name=agent_name,
+            agent_model=agent_model,
+            agent_task=agent_task,
+            layer_number=layer_number,
+            accumulated_context=accumulated_context
+        )
+
         res = await executor.ainvoke({"messages": [("user", user_message)]})
         
+        if not isinstance(res, dict):
+            raise ValueError("Sub-agent executor must return a state dictionary")
+
         # Extract structured response directly from the agent execution result
         structured_response = res.get("structured_response") if isinstance(res, dict) else None
         messages = res.get("messages", []) if isinstance(res, dict) else []
-        final_content = messages[-1].content if messages else ""
+        raise_tool_message_error(messages)
+        if response_format is not None:
+            if structured_response is None:
+                raise ValueError("Sub-agent did not return the required structured response")
+            if isinstance(response_format, type) and issubclass(response_format, BaseModel):
+                structured_response = response_format.model_validate(structured_response)
+        final_content = (messages[-1].get("content", "") if isinstance(messages[-1], dict)
+                         else messages[-1].content) if messages else ""
 
         # If final_content is empty (often happens when structured_response is used), populate from structured_response
         if not final_content and structured_response is not None:
@@ -153,14 +167,18 @@ async def run_single_agent(
         WorkflowLogger.log_subagent_failed(agent_name=agent_name, error=e)
 
 
+        messages = getattr(e, "messages", messages)
         if error_correction_agent is not None:
-            await error_correction_agent.start_fix(
-                agent=agent,
-                checkpoints=checkpoints,
-                layer_number=layer_number,
-                default_model_name=default_model_name,
-                error=e
-            )
+            try:
+                await error_correction_agent.start_fix(
+                    agent=agent,
+                    checkpoints=checkpoints,
+                    layer_number=layer_number,
+                    default_model_name=default_model_name,
+                    error=e
+                )
+            except Exception:
+                logging.getLogger(__name__).exception("Error reporting failed for %s", agent_name)
 
         # Record failed sub-agent checkpoint
 
@@ -191,7 +209,7 @@ async def run_single_agent(
             status="error",
             error=str(e),
             response=f"Error executing task: {str(e)}",
-            messages=[]
+            messages=messages
         )
 
 
