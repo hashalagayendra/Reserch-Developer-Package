@@ -27,6 +27,9 @@ pip install self-evolving-workflow
 
 ## Quick Start
 
+Pass the OpenRouter API key and all three model names and temperatures directly
+to `Research.configure()`.
+
 ```python
 from research import Research
 
@@ -36,6 +39,10 @@ researcher.configure(
     openRouterAPIKey="your-openrouter-key",
     toolDiscoveryModel="deepseek/deepseek-v4-flash",
     toolDiscoveryModelTemperature=0.8,
+    mainWorkflowModel="deepseek/deepseek-v4-flash",
+    mainWorkflowModelTemperature=0.0,
+    errorCorrectionModel="deepseek/deepseek-v4-flash",
+    errorCorrectionModelTemperature=0.2,
     toolDbBaseUrl="http://127.0.0.1:8000/api/v1",
     projectApiKey="your-project-api-key"
 )
@@ -43,7 +50,7 @@ researcher.configure(
 
 ## MCP URL supplied by your backend
 
-Pass only the separate MCP server's URL to the Research object. The package
+Pass the separate MCP server's URL along with your workflow configuration. The package
 discovers and converts its tools internally before creating the orchestrator:
 
 ```python
@@ -54,6 +61,12 @@ async def run_research(query, openrouter_key):
     researcher = Research()
     researcher.configure(
         openRouterAPIKey=openrouter_key,
+        toolDiscoveryModel="deepseek/deepseek-v4-flash",
+        toolDiscoveryModelTemperature=0.8,
+        mainWorkflowModel="deepseek/deepseek-v4-flash",
+        mainWorkflowModelTemperature=0.0,
+        errorCorrectionModel="deepseek/deepseek-v4-flash",
+        errorCorrectionModelTemperature=0.2,
         mcp_server_url="http://127.0.0.1:8001/mcp",
     )
     return await researcher.run(query)
@@ -83,12 +96,7 @@ The package does not read project API keys from environment variables or `.env` 
 
 You can configure defaults via a `.env` file:
 ```ini
-OPENROUTER_API_KEY=your_key_here
 TOOL_DB_BASE_URL=http://127.0.0.1:8000/api/v1
-TOOL_DISCOVERY_MODEL=deepseek/deepseek-v4-flash
-TOOL_DISCOVERY_TEMPERATURE=0.8
-MAIN_WORKFLOW_MODEL=deepseek/deepseek-v4-flash
-MAIN_WORKFLOW_TEMPERATURE=0.0
 EMBEDDING_MODEL=voyageai/voyage-4-lite
 ```
 

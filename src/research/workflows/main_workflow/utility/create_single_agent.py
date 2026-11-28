@@ -3,7 +3,6 @@ from langchain.agents import create_agent
 from research.execution_errors import RaiseToolErrorsMiddleware
 from langchain_core.tools import BaseTool
 from langchain_openrouter import ChatOpenRouter
-from research.config import settings
 from research.workflows.tool_descovery_workflow.tool_genarator import create_dynamic_api_tool
 from research.workflows.tool_descovery_workflow.tool_discovery import APIToolDefinition
 from research.workflows.main_workflow.schemas import ExecutableSubAgent
@@ -30,8 +29,8 @@ def create_single_agent(
         task (str): The specific task assigned to this agent.
         name (str, optional): Name of the agent. Defaults to "SubAgent".
         tools (Optional[List[Any]], optional): Tools or APIToolDefinition items to bind to this agent. Defaults to None (empty list).
-        temperature (Optional[float], optional): Model temperature. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
-        api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
+        temperature (Optional[float], optional): Model temperature. Defaults to 0.0.
+        api_key (str): OpenRouter API key for the agent.
         response_format (Optional[Any], optional): Structured response schema (Pydantic model or schema) to bind to this agent.
         assigned_mcp_tools: Resolved remote MCP tools assigned only to this sub-agent.
         
@@ -39,8 +38,6 @@ def create_single_agent(
         ExecutableSubAgent: Pydantic model instance containing agent details, initialized LLM model instance, and compiled executable agent executor.
     """
     agent_tools = tools if tools is not None else []
-    agent_temp = temperature if temperature is not None else settings.MAIN_WORKFLOW_TEMPERATURE
-    agent_api_key = api_key or settings.OPENROUTER_API_KEY
 
     # 1. Convert APIToolDefinition instances or tool dictionaries into executable tools using create_dynamic_api_tool
     executable_agent_tools: List[Any] = []
@@ -59,10 +56,13 @@ def create_single_agent(
         raise ValueError(f"Duplicate tool names assigned to sub-agent {name!r}.")
 
     # 2. Initialize dedicated LLM model instance
+    if not api_key or not api_key.strip():
+        raise ValueError("api_key must be a non-empty string.")
+
     sub_agent_llm = ChatOpenRouter(
         model=model_name,
-        temperature=agent_temp,
-        api_key=agent_api_key
+        temperature=temperature if temperature is not None else 0.0,
+        api_key=api_key.strip(),
     )
 
     # 3. Build structured prompt combining system prompt and assigned task

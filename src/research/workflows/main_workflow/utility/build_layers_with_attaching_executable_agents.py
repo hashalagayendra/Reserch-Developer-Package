@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, Union, Optional
 from langchain_core.tools import BaseTool
-from research.config import settings
 from research.workflows.main_workflow.schemas import (
     NonExecutableSubAgentConfig,
     NonExecutableLayerConfig,
@@ -31,8 +30,8 @@ def build_layers_with_attaching_executable_agents(
     Args:
         layers (Union[List[Any], Dict[str, Any], OrchestratorOutput]): The list of layers or task division data.
         tools (Optional[List[Any]], optional): Tools to bind to sub-agents.
-        temperature (Optional[float], optional): Model temperature. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
-        api_key (Optional[str], optional): OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
+        temperature (Optional[float], optional): Model temperature. Defaults to 0.0.
+        api_key (str): OpenRouter API key for the sub-agents.
         default_model_name (Optional[str], optional): Default LLM model name if not specified in sub-agent config.
         response_schema (Optional[Any], optional): Structured response schema to bind to the last sub-agent of the last layer.
         all_mcp_tools: Available MCP tool registry; each agent receives only its named selections.
@@ -40,9 +39,7 @@ def build_layers_with_attaching_executable_agents(
     Returns:
         ExecutableLayers: Layer-by-layer Pydantic model maintaining layer order and containing sub-agents with their executable agents.
     """
-    resolved_api_key = api_key or settings.OPENROUTER_API_KEY
-    resolved_temperature = temperature if temperature is not None else settings.MAIN_WORKFLOW_TEMPERATURE
-    fallback_model = default_model_name or settings.MAIN_WORKFLOW_MODEL
+    fallback_model = default_model_name or "deepseek/deepseek-v4-flash"
     all_mcp_tools = all_mcp_tools or []
     if len({tool.name for tool in all_mcp_tools}) != len(all_mcp_tools):
         raise ValueError("MCP tool names must be unique.")
@@ -122,8 +119,8 @@ def build_layers_with_attaching_executable_agents(
                 task=task,
                 name=name,
                 tools=agent_tools or [],
-                temperature=resolved_temperature,
-                api_key=resolved_api_key,
+                temperature=temperature,
+                api_key=api_key,
                 response_format=agent_response_format,
                 assigned_mcp_tools=assigned_mcp_tools,
             )

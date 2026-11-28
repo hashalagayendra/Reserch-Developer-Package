@@ -59,18 +59,20 @@ class ToolDiscoveryState(TypedDict):
 # --- WORKFLOW CLASS ---
 class ToolDiscoveryWorkflow:
     def __init__(
-        self, 
-        openRouterAPIKey: str = None, 
-        toolDiscoveryModel: str = None, 
-        toolDiscoveryModelTemperature: float = None,
-        embeddingModel: str = None,
+        self,
+        openRouterAPIKey: str,
+        toolDiscoveryModel: str | None = None,
+        toolDiscoveryModelTemperature: float | None = None,
+        embeddingModel: str | None = None,
         db_client = None
     ):
+        if not openRouterAPIKey or not openRouterAPIKey.strip():
+            raise ValueError("openRouterAPIKey must be a non-empty string.")
+
         self.db_client = db_client
-        # Configuration
-        api_key = openRouterAPIKey or settings.OPENROUTER_API_KEY
-        model = toolDiscoveryModel or settings.TOOL_DISCOVERY_MODEL
-        temp = toolDiscoveryModelTemperature if toolDiscoveryModelTemperature is not None else settings.TOOL_DISCOVERY_TEMPERATURE
+        api_key = openRouterAPIKey.strip()
+        model = toolDiscoveryModel or "deepseek/deepseek-v4-flash"
+        temp = toolDiscoveryModelTemperature if toolDiscoveryModelTemperature is not None else 0.8
         emb_model = embeddingModel or settings.EMBEDDING_MODEL
         
         # Initialize the LLM

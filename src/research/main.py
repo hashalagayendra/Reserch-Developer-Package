@@ -55,32 +55,22 @@ class Research:
         mcp_server_url: Optional[str] = None,
     ):
         """
-        Configure the Research workflow agent.
+        Configure the Research workflow agent with an explicit OpenRouter key,
+        model names, and temperatures.
 
         Args:
-            openRouterAPIKey (str, optional): The OpenRouter API key. Defaults to settings.OPENROUTER_API_KEY.
-            toolDiscoveryModel (str, optional): The model to use for tool discovery. Defaults to settings.TOOL_DISCOVERY_MODEL.
-            toolDiscoveryModelTemperature (float, optional): Temperature for tool discovery. Defaults to settings.TOOL_DISCOVERY_TEMPERATURE.
+            openRouterAPIKey (str): The OpenRouter API key.
+            toolDiscoveryModel (str): The model to use for tool discovery.
+            toolDiscoveryModelTemperature (float): Temperature for tool discovery.
             projectApiKey (str, optional): Backend-issued project API key for the Tool Database, supplied by the caller.
             toolDbBaseUrl (str, optional): Base URL for the Tool DB API. Defaults to settings.TOOL_DB_BASE_URL.
-            mainWorkflowModel (str, optional): Model for the main workflow. Defaults to settings.MAIN_WORKFLOW_MODEL.
-            mainWorkflowModelTemperature (float, optional): Temperature for the main workflow. Defaults to settings.MAIN_WORKFLOW_TEMPERATURE.
-            errorCorrectionModel (str, optional): Model for error correction. Defaults to settings.ERROR_CORRECTION_MODEL.
-            errorCorrectionModelTemperature (float, optional): Temperature for error correction. Defaults to settings.ERROR_CORRECTION_TEMPERATURE.
+            mainWorkflowModel (str): Model for the main workflow.
+            mainWorkflowModelTemperature (float): Temperature for the main workflow.
+            errorCorrectionModel (str): Model for error correction.
+            errorCorrectionModelTemperature (float): Temperature for error correction.
             response_schema (Type[BaseModel], optional): Pydantic model for structured output from the final agent. Wrapped inside ResponseSchema['response'] (defaults to str if None).
             mcp_server_url: MCP HTTP endpoint. Tools are loaded inside this package before run().
         """
-        openRouterAPIKey = openRouterAPIKey or settings.OPENROUTER_API_KEY
-        toolDiscoveryModel = toolDiscoveryModel or settings.TOOL_DISCOVERY_MODEL
-        if toolDiscoveryModelTemperature is None:
-            toolDiscoveryModelTemperature = settings.TOOL_DISCOVERY_TEMPERATURE
-        mainWorkflowModel = mainWorkflowModel or settings.MAIN_WORKFLOW_MODEL
-        if mainWorkflowModelTemperature is None:
-            mainWorkflowModelTemperature = settings.MAIN_WORKFLOW_TEMPERATURE
-        errorCorrectionModel = errorCorrectionModel or settings.ERROR_CORRECTION_MODEL
-        if errorCorrectionModelTemperature is None:
-            errorCorrectionModelTemperature = settings.ERROR_CORRECTION_TEMPERATURE
-
         if not isinstance(openRouterAPIKey, str) or not openRouterAPIKey.strip():
             raise ValueError("openRouterAPIKey must be a valid, non-empty string.")
             
