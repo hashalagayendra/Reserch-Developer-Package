@@ -1,21 +1,26 @@
 """
 Error Correction Sub-Agent for Main Workflow.
 
-Prints sub-agent failure details without repairing or rerunning the agent.
-Classification remains available only through an explicit classify_error call.
+Classifies sub-agent failures with Jev and retries model errors with a fallback model.
 """
 
+import logging
 from typing import Optional, List, Any, Dict, Union
 from langchain.agents import create_agent
 from langchain_typesafe import Choice, TypeSafeClassifier
 from langchain_openrouter import ChatOpenRouter
 from typing import Annotated, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from research.workflows.main_workflow.schemas import (
     ExecutableSubAgent,
     CheckpointDetails,
+    SubAgentExecutionResult,
 )
+from research.workflows.main_workflow.utility.create_single_agent import create_single_agent
+from research.workflows.main_workflow.utility.layer_execution_engine import run_single_agent
 
+
+MODEL_ERROR_FALLBACK = "openai/gpt-4.1-mini"
 
 ERROR_CATEGORIES = {
     "model": "Model unavailability, context limits, refusals, or generation/reasoning failures; "
@@ -116,18 +121,71 @@ class ErrorCorrectionSubAgent:
         layer_number: Optional[int] = None,
         default_model_name: Optional[str] = None,
         error: Optional[Any] = None
-    ) -> None:
-        """Receive the original exception and print context; do not classify or retry."""
+    ) -> Optional[Union[Dict[str, Any], SubAgentExecutionResult]]:
+        """Classify the exception and return the fallback result when a retry runs."""
         def field(name, default=None):
             return agent.get(name, default) if isinstance(agent, dict) else getattr(agent, name, default)
 
+        agent_name = field("name", "SubAgent")
+        agent_task = field("task", "")
+        agent_model = field("model_name") or default_model_name
+
         print("--- [Error Correction Agent] ---")
-        print(f"Agent Name: {field('name', 'SubAgent')}")
-        print(f"Agent Task: {field('task', '')}")
-        print(f"Agent Model: {field('model_name') or default_model_name}")
+        print(f"Agent Name: {agent_name}")
+        print(f"Agent Task: {agent_task}")
+        print(f"Agent Model: {agent_model}")
         print(f"Layer Number: {layer_number}")
         print(f"Error Type: {type(error).__name__}")
         print(f"Error: {error}")
         if getattr(error, "tool_name", None):
             print(f"Failed Tool: {error.tool_name}")
         print("--------------------------------")
+
+        try:
+            classification = await self.classify_error({
+                "agent_name": agent_name,
+                "task": agent_task,
+                "model_name": agent_model,
+                "error": error,
+            })
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "Error classification failed for %s in layer %s (%s)",
+                agent_name, layer_number, type(exc).__name__,
+            )
+            return None
+
+        print(f"Error Classification for {agent_name} (Layer {layer_number}): "
+              f"{classification.category} (confidence {classification.confidence:.1%})")
+        if classification.category != "model" or agent_model == MODEL_ERROR_FALLBACK:
+            return classification.model_dump()
+
+        original_llm = field("llm")
+        api_key = getattr(original_llm, "openrouter_api_key", None) or self.api_key
+        if isinstance(api_key, SecretStr):
+            api_key = api_key.get_secret_value()
+
+        try:
+            fallback_agent = create_single_agent(
+                model_name=MODEL_ERROR_FALLBACK,
+                system_prompt=field("system_prompt", ""),
+                task=agent_task,
+                name=agent_name,
+                tools=field("tools"),
+                temperature=getattr(original_llm, "temperature", None),
+                api_key=api_key,
+                response_format=field("response_format"),
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "Could not build fallback agent for %s in layer %s (%s)",
+                agent_name, layer_number, type(exc).__name__,
+            )
+            return classification.model_dump()
+
+        # Run one replacement attempt without passing an error-correction handler.
+        return await run_single_agent(
+            agent=fallback_agent,
+            checkpoints=checkpoints,
+            layer_number=layer_number,
+        )

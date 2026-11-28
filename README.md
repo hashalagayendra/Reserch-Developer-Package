@@ -76,45 +76,6 @@ combines these callable MCP tools with converted API tools in one agent executor
 Unknown MCP names and duplicate tool names are rejected before execution.
 Omit `mcp_server_url` to preserve the original workflow. Tool names must be unique.
 
-## Live MCP integration tests
-
-`tests/test_mcp_integration.py` starts the actual sibling `MCP_Server/server.py`
-on a temporary localhost port and stops it after the tests. It uses the server's
-virtual environment by default; set `MCP_SERVER_PYTHON` to override its Python
-executable. Install both projects' dependencies first.
-
-From `Reserch-Developer-Package`, run these PowerShell commands for the checks
-that require no model requests:
-
-```powershell
-$env:PYTHONPATH = "src"
-$env:MCP_INTEGRATION_TEST = "1"
-.venv/Scripts/python.exe -m unittest discover -s tests -p test_mcp_integration.py -v
-```
-
-These checks verify real HTTP discovery, a remote `greet` invocation, and
-`Research.configure()` / `initialize()` loading the tools into the main workflow.
-The real-model test is explicitly skipped in this mode.
-
-To also exercise `Research.run()` with a real OpenRouter model, configure a valid
-`OPENROUTER_API_KEY` in the environment or package `.env`, then run:
-
-```powershell
-$env:PYTHONPATH = "src"
-$env:MCP_LIVE_AGENT_TEST = "1"
-.venv/Scripts/python.exe -m unittest discover -s tests -p test_mcp_integration.py -v
-```
-
-This makes paid model requests. `MCP_TEST_MODEL` optionally overrides the configured
-main model. The test requires the actual workflow to record a successful
-`get_students` call/result pair and produce a final answer containing the highest
-student's name and marks (currently Amal, 82). A plausible final answer without a
-recorded tool result fails. Model/provider/network failures also fail the test;
-they are not silently skipped. No models or MCP tools are mocked.
-
-These are package-to-server integration checks. They do not verify browser UI,
-backend route configuration, or the complete frontend-to-backend flow.
-
 ## Environment Variables
 
 Pass the project API key issued by the backend through `Research.configure(projectApiKey=...)`.
@@ -141,10 +102,12 @@ Its `classify_error()` method calls `ainvoke()` with state and a `Choice` questi
 then reads `response.choices["error_category"].probabilities` for all four scores.
 The model is hardcoded in `error_correction_sub_agent.py`.
 The four categories are `model`, `infrastructure`, `tool`, and `structured_output`.
-`start_fix()` returns `probabilities` for every category, the `category` with the
-highest probability, and that probability as `confidence` (0 to 1). Ties use the
-first category in the returned probability mapping. Classification failures return
-`None` and preserve the original error. Classification does not retry or repair the task.
+The error-correction agent logs the category with the highest probability and its
+confidence. For a `model` error, `start_fix()` rebuilds the failed sub-agent with
+`openai/gpt-4.1-mini` and runs it once with the same task, tools, prior-layer
+context, and response schema. It returns the retry's execution result to the
+workflow. When no retry runs, it returns the classification and the workflow
+records the original error. If classification fails, `start_fix()` returns `None`.
 
 ## Publishing to PyPI
 

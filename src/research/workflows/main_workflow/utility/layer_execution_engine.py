@@ -170,13 +170,15 @@ async def run_single_agent(
         messages = getattr(e, "messages", messages)
         if error_correction_agent is not None:
             try:
-                await error_correction_agent.start_fix(
+                recovery_result = await error_correction_agent.start_fix(
                     agent=agent,
                     checkpoints=checkpoints,
                     layer_number=layer_number,
                     default_model_name=default_model_name,
                     error=e
                 )
+                if isinstance(recovery_result, SubAgentExecutionResult):
+                    return recovery_result
             except Exception:
                 logging.getLogger(__name__).exception("Error reporting failed for %s", agent_name)
 
